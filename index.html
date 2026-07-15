@@ -131,17 +131,18 @@
   /* ===== Área de sistemas (flexbox: linha incompleta fica centralizada) ===== */
   .grid{
     flex:1 1 auto; min-height:0;
-    display:flex; flex-wrap:wrap;
-    justify-content:center;
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
     align-content:center;
+    justify-items:center;
     gap:clamp(12px,2vh,20px);
-    padding:0 clamp(20px,4vw,48px) clamp(10px,2vh,20px);
-    width:100%; max-width:1400px; margin:0 auto;
-    overflow-y:auto;   /* fallback: se realmente não couber (celular), rola só esta área */
+    padding:0 clamp(16px,4vw,48px) clamp(10px,2vh,20px) clamp(16px,4vw,48px);
+    width:48vw; max-width:760px; margin-left:50%;
+    overflow-y:auto;
   }
   .card{
     position:relative;
-    flex:0 1 320px; min-width:260px;
+    width:100%; max-width:360px;
     display:flex; flex-direction:column; gap:clamp(7px,1.2vh,12px);
     background:var(--surface);
     background:color-mix(in srgb, var(--surface) 86%, transparent);
@@ -237,8 +238,8 @@
     .dot-arc span{ opacity:1; transform:none; }
   }
   @media (max-width:640px){
-    .grid{ align-content:flex-start; }
-    .card{ flex-basis:100%; }
+    .grid{ grid-template-columns:1fr; width:100%; max-width:100%; margin-left:0; padding:0 20px clamp(10px,2vh,20px); }
+    .card{ max-width:100%; }
   }
 </style>
 </head>
@@ -387,9 +388,10 @@ const ICONES = {
 
   const scene  = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-  camera.position.set(0, 0, 3.0);
+  camera.position.set(0, 0, 4.0);
 
   const pivot = new THREE.Group();                // inclinação (pitch)
+  pivot.position.x = -1.4;                        // globo deslocado para a esquerda
   const globe = new THREE.Group();                // rotação leste-oeste (yaw)
   pivot.add(globe);
   scene.add(pivot);
