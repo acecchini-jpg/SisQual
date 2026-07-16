@@ -219,9 +219,10 @@
   footer{
     flex:0 0 auto;
     text-align:center;
-    padding:clamp(8px,1.6vh,14px) 24px;
+    padding:clamp(6px,1.4vh,12px) 24px;
     border-top:1px solid var(--line);
     font-size:11.5px; color:var(--muted);
+    line-height:1.6;
     transition:border-color .35s ease;
   }
   footer b{ color:var(--text); font-weight:600; }
@@ -258,7 +259,7 @@
 
 <section class="hero">
   <div class="dot-arc" aria-hidden="true"><span></span><span></span><span></span></div>
-  <div class="eyebrow">Röchling · Sistemas Industriais</div>
+  <div class="eyebrow">Röchling Automotive - Itupeva</div>
   <h1>Portal de Sistemas</h1>
   <p>Acesso centralizado às ferramentas de gestão da produção e da qualidade. Selecione um sistema para abrir.</p>
 </section>
@@ -266,7 +267,8 @@
 <main class="grid" id="grid" aria-label="Sistemas disponíveis"></main>
 
 <footer>
-  <b>Röchling</b> · Portal interno de sistemas · Os sistemas abrem em uma nova aba
+  <b>Röchling</b> · Portal interno de sistemas<br>
+  &copy; 2026 - A M Cecchini
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -304,9 +306,9 @@ const SISTEMAS = [
   },
   {
     nome : "Action Plan",
-    tag  : "Em breve",
-    desc : "Gestão de planos de ação — abertura, acompanhamento e encerramento de ações corretivas por responsável e prazo. Sistema em desenvolvimento.",
-    url  : "em-construcao.html",
+    tag  : "Qualidade",
+    desc : "Gestão de planos de ação — abertura, acompanhamento e encerramento de ações corretivas por responsável e prazo.",
+    url  : "https://acecchini-jpg.github.io/ActionPlan/",
     icone: "plano"
   }
 ];
@@ -359,7 +361,12 @@ const ICONES = {
   const preferido = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
   aplicar(salvo || preferido);
 
-  btn.addEventListener('click', function(){
+  btn.addEventListener('click', function(e){
+    /* Easter egg: shift+click abre o jogo da velha (respeita o tema atual) */
+    if (e.shiftKey){
+      window.open('jogo-da-velha.html', '_blank', 'noopener');
+      return;
+    }
     const novo = (root.getAttribute('data-theme') === 'dark') ? 'light' : 'dark';
     aplicar(novo);
     salvar(novo);
@@ -493,6 +500,49 @@ const ICONES = {
   label.position.copy(normal.clone().multiplyScalar(R*1.13));
   globe.add(label);
 
+  /* --- Marcadores estáticos: demais unidades Röchling (ponto cinza + texto, sem pulso) --- */
+  const OUTRAS_UNIDADES = [
+    { nome: 'Duncan · SC',  lat: 34.9312, lon: -82.1317 },
+    { nome: 'Akron · OH',   lat: 40.9987, lon: -81.4468 },
+    { nome: 'Silao · MX',   lat: 20.9764, lon: -101.4494 }
+  ];
+  const marcadoresEstaticosMat = [];
+  const rotulosEstaticos = [];
+  OUTRAS_UNIDADES.forEach(function(cidade){
+    const pos = ll2xyz(cidade.lon, cidade.lat, R*1.004);
+    const normalC = new THREE.Vector3(...pos).normalize();
+
+    const grupo = new THREE.Group();
+    grupo.position.set(...pos);
+    grupo.lookAt(normalC.clone().multiplyScalar(2));
+    globe.add(grupo);
+
+    const pontoMat = new THREE.MeshBasicMaterial({ color:0x8A97A8 });
+    grupo.add(new THREE.Mesh(new THREE.CircleGeometry(0.012, 20), pontoMat));
+    marcadoresEstaticosMat.push(pontoMat);
+
+    const cv = document.createElement('canvas');
+    cv.width = 256; cv.height = 64;
+    const tex = new THREE.CanvasTexture(cv);
+    function desenhar(cor){
+      const cx = cv.getContext('2d');
+      cx.clearRect(0,0,256,64);
+      cx.font = '500 26px Inter, sans-serif';
+      cx.textAlign = 'center'; cx.textBaseline = 'middle';
+      cx.fillStyle = cor;
+      cx.fillText(cidade.nome, 128, 32);
+      tex.needsUpdate = true;
+    }
+    const spriteRotulo = new THREE.Sprite(new THREE.SpriteMaterial({
+      map:tex, transparent:true, depthWrite:false
+    }));
+    spriteRotulo.scale.set(0.30, 0.075, 1);
+    spriteRotulo.position.copy(normalC.clone().multiplyScalar(R*1.12));
+    globe.add(spriteRotulo);
+
+    rotulosEstaticos.push(desenhar);
+  });
+
   /* --- Tema do globo (chamado pelo toggle da página) --- */
   window.aplicarTemaGlobo = function(escuro){
     const linha = escuro ? 0x4D9BE8 : 0x1563AE;
@@ -503,8 +553,17 @@ const ICONES = {
     dotMat.color.setHex(linha);
     ringMat.color.setHex(linha);
     desenharRotulo(escuro ? '#7FB8F0' : '#1563AE');
+    const corCidades = escuro ? 0xA8B4C4 : 0x8A97A8;
+    const corRotuloCidades = escuro ? '#A8B4C4' : '#6B7A8C';
+    marcadoresEstaticosMat.forEach(m => m.color.setHex(corCidades));
+    rotulosEstaticos.forEach(desenhar => desenhar(corRotuloCidades));
     if (reduceMotion) renderer.render(scene, camera);      // re-renderiza o quadro estático
   };
+
+  /* Sincroniza cores com o tema já aplicado na página (corrige a ordem de carregamento
+     dos scripts, garantindo que o rótulo de Itupeva e das demais unidades apareçam
+     desde o primeiro quadro) */
+  window.aplicarTemaGlobo(document.documentElement.getAttribute('data-theme') === 'dark');
 
   /* --- Redimensionamento --- */
   function resize(){
@@ -521,7 +580,7 @@ const ICONES = {
   const clock = new THREE.Clock();
   function frame(){
     const t = clock.getElapsedTime();
-    globe.rotation.y += 0.0009;                            // rotação bem lenta
+    globe.rotation.y += 0.0018;                            // rotação (2x mais rápida)
     const pulso = (t % 2.2) / 2.2;                         // ciclo de 2,2s
     ring.scale.setScalar(1 + pulso * 2.4);
     ringMat.opacity = 0.8 * (1 - pulso);
