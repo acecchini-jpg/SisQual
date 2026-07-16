@@ -413,7 +413,7 @@ const ICONES = {
   /* Posição inicial: Brasil (Itupeva-SP) de frente para a câmera */
   const ITUPEVA = { lat:-23.153, lon:-47.058 };
   globe.rotation.y = (-90 - ITUPEVA.lon) * Math.PI/180;   // traz a longitude para frente
-  pivot.rotation.x = ITUPEVA.lat * Math.PI/180 * 0.85;    // inclina para o hemisfério sul
+  pivot.rotation.x = 0;                                    // equador centralizado na tela
 
   /* --- Contornos continentais --- */
   const coastMat = new THREE.LineBasicMaterial({
@@ -502,6 +502,7 @@ const ICONES = {
 
   /* --- Marcadores estáticos: demais unidades Röchling (ponto cinza + texto, sem pulso) --- */
   const OUTRAS_UNIDADES = [
+    { nome: 'Laives · IT',  lat: 46.4269, lon: 11.3377 },
     { nome: 'Duncan · SC',  lat: 34.9312, lon: -82.1317 },
     { nome: 'Akron · OH',   lat: 40.9987, lon: -81.4468 },
     { nome: 'Silao · MX',   lat: 20.9764, lon: -101.4494 }
@@ -565,6 +566,63 @@ const ICONES = {
      desde o primeiro quadro) */
   window.aplicarTemaGlobo(document.documentElement.getAttribute('data-theme') === 'dark');
 
+  /* --- Easter egg: aviãozinho fazendo a rota entre as unidades =====
+     Ativa/desativa com shift+click em qualquer ponto do globo. */
+  const ROTA_AVIAO = [
+    ITUPEVA,
+    OUTRAS_UNIDADES[0], // Laives
+    OUTRAS_UNIDADES[2], // Akron
+    OUTRAS_UNIDADES[1], // Duncan
+    OUTRAS_UNIDADES[3], // Silao
+    ITUPEVA
+  ];
+  const pontosRota = ROTA_AVIAO.map(p => new THREE.Vector3(...ll2xyz(p.lon, p.lat, R*1.05)));
+
+  const avionGroup = new THREE.Group();
+  avionGroup.visible = false;
+  const avionMat = new THREE.MeshBasicMaterial({ color:0xFF9E1B });
+
+  const fuselagemGeo = new THREE.ConeGeometry(0.007, 0.055, 8);
+  fuselagemGeo.rotateX(-Math.PI/2); // aponta o "nariz" para o eixo -Z (padrão de lookAt)
+  avionGroup.add(new THREE.Mesh(fuselagemGeo, avionMat));
+
+  const asas = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.003, 0.016), avionMat);
+  asas.position.z = 0.006; // um pouco atrás do nariz
+  avionGroup.add(asas);
+
+  const cauda = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.016, 0.006), avionMat);
+  cauda.position.set(0, 0.008, 0.024); // deriva vertical, na traseira
+  avionGroup.add(cauda);
+
+  const estabilizador = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.003, 0.008), avionMat);
+  estabilizador.position.z = 0.024; // estabilizador horizontal, na traseira
+  avionGroup.add(estabilizador);
+  globe.add(avionGroup);
+
+  let avionAtivo = false;
+  const DURACAO_TRECHO = 3.2; // segundos por trecho da rota
+  const DURACAO_TOTAL = DURACAO_TRECHO * (pontosRota.length - 1);
+
+  function atualizarAviao(tempo){
+    const totalT = (tempo % DURACAO_TOTAL) / DURACAO_TRECHO;
+    let seg = Math.floor(totalT);
+    if (seg >= pontosRota.length - 1) seg = pontosRota.length - 2;
+    const local = totalT - seg;
+    const a = pontosRota[seg], b = pontosRota[seg + 1];
+    const pos = new THREE.Vector3().lerpVectors(a, b, local).normalize().multiplyScalar(R*1.05);
+    avionGroup.position.copy(pos);
+    const alvo = pos.clone().add(b.clone().sub(a)).normalize().multiplyScalar(R*1.06);
+    avionGroup.lookAt(alvo);
+  }
+
+  canvas.style.pointerEvents = 'auto'; // permite detectar o shift+click sem interferir nos cards (acima, em z-index maior)
+  canvas.addEventListener('click', function(e){
+    if (!e.shiftKey) return;
+    avionAtivo = !avionAtivo;
+    avionGroup.visible = avionAtivo;
+    if (reduceMotion){ atualizarAviao(0); renderer.render(scene, camera); }
+  });
+
   /* --- Redimensionamento --- */
   function resize(){
     const w = window.innerWidth, h = window.innerHeight;
@@ -576,7 +634,7 @@ const ICONES = {
   window.addEventListener('resize', resize);
   resize();
 
-  /* --- Animação: rotação lenta + pulso do marcador --- */
+  /* --- Animação: rotação lenta + pulso do marcador + aviãozinho (se ativo) --- */
   const clock = new THREE.Clock();
   function frame(){
     const t = clock.getElapsedTime();
@@ -584,6 +642,7 @@ const ICONES = {
     const pulso = (t % 2.2) / 2.2;                         // ciclo de 2,2s
     ring.scale.setScalar(1 + pulso * 2.4);
     ringMat.opacity = 0.8 * (1 - pulso);
+    if (avionAtivo) atualizarAviao(t);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
