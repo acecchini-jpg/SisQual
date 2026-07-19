@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script>
+/* Aplica o tema salvo pelo portal (mesma chave: portal-tema) antes da pintura da página */
+(function(){
+  try{
+    var t = localStorage.getItem('portal-tema');
+    if(!t){ t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+    document.documentElement.setAttribute('data-theme', t);
+  }catch(e){ document.documentElement.setAttribute('data-theme','dark'); }
+})();
+</script>
+<title>TURBO ESTRADA 86</title>
+<style>
+  :root{ --bg:#0d0221; --grid:#2a0f47; --neonp:#ff2975; --neonc:#00fff0; --sun:#ffd319; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:var(--bg);font-family:monospace;
+    user-select:none;-webkit-user-select:none;touch-action:none}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:
+      radial-gradient(ellipse at 50% 120%, #3d1466 0%, transparent 55%),
+      var(--bg)}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;display:block;
+    box-shadow:0 0 40px rgba(255,41,117,.25), 0 0 90px rgba(0,255,240,.12)}
+  /* CRT scanlines + vinheta por cima do canvas */
+  #crt{position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px);
+    mix-blend-mode:multiply}
+  #vig{position:fixed;inset:0;pointer-events:none;z-index:6;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(5,0,15,.55) 100%)}
+
+  /* ===== Barra de integração com o Portal Röchling ===== */
+  .portalBar{ position:fixed; top:12px; right:12px; z-index:9999; display:flex; gap:7px; }
+  .portalBtn{
+    display:flex; align-items:center; gap:6px; font-family:inherit; font-size:11px; font-weight:600;
+    letter-spacing:.03em; text-transform:uppercase; text-decoration:none; cursor:pointer;
+    padding:7px 11px; border-radius:8px; border:1px solid rgba(124,138,160,.35);
+    background:rgba(6,9,14,0.68); color:#9fb0c6; backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px); transition:all .2s ease; white-space:nowrap;
+  }
+  .portalBtn:hover{ color:#fff; border-color:#7c8aa0; }
+  html[data-theme="light"] .portalBtn{
+    background:rgba(255,255,255,0.82); color:#4A5B6E; border-color:rgba(21,99,174,.28);
+  }
+  html[data-theme="light"] .portalBtn:hover{ color:#1563AE; border-color:#1563AE; }
+  @media (max-width:480px){ .portalBtn span.portalTxt{ display:none; } }
+
+  html[data-theme="light"]{ --bg:#dce8f5; }
+</style>
+</head>
+<body>
+<div class="portalBar">
+  <a class="portalBtn" href="index.html" title="Voltar ao portal Röchling">⤺ <span class="portalTxt">PORTAL</span></a>
+  <button class="portalBtn" id="portalTemaBtn" title="Alternar tema claro/escuro"><span id="portalTemaIcone">🌙</span> <span class="portalTxt" id="portalTemaTxt">ESCURO</span></button>
+  <button class="portalBtn" id="portalSomBtn" title="Ativar/desativar som"><span id="portalSomIcone">🔊</span> <span class="portalTxt">SOM</span></button>
+</div>
+<div id="wrap"><canvas id="game"></canvas></div>
+<div id="crt"></div><div id="vig"></div>
+<script>
+'use strict';
+/* ============================================================
+   TURBO ESTRADA 86 — corrida arcade retrô
+   4 faixas · swipe p/ trocar de faixa · velocidade progressiva
+   Obstáculos: carros, buracos e árvores caídas (sempre há rota)
+   ============================================================ */
+
+/* ---------- canvas de baixa resolução (pixel art) ---------- */
+const W = 176, H = 288;                 // resolução interna
+const cv = document.getElementById('game');
+const cx = cv.getContext('2d');
+cv.width = W; cv.height = H;
+
+function fit(){
+  const aw = window.innerWidth, ah = window.innerHeight;
+  const s = Math.min(aw / W, ah / H);
+  cv.style.width  = Math.floor(W * s) + 'px';
+  cv.style.height = Math.floor(H * s) + 'px';
+}
+window.addEventListener('resize', fit); fit();
+
+/* ---------- geometria da pista ---------- */
+const LANES = 4;
+const ROAD_W = 116;                      // largura do asfalto
+const ROAD_X = (W - ROAD_W) / 2;         // margem esquerda do asfalto
+const LANE_W = ROAD_W / LANES;           // 29 px por faixa
+const laneX = i => ROAD_X + LANE_W * i + LANE_W / 2;  // centro da faixa
+
+/* ---------- paleta ---------- */
+const P = {
+  asfalto:'#2b2b3d', asfalto2:'#26263a', faixa:'#ffd319',
+  borda:'#ff2975', bordaB:'#ffffff',
+  grama:'#0e3b2e', grama2:'#0b3128',
+  ceu1:'#0d0221', ceu2:'#3d1466', sol1:'#ffd319', sol2:'#ff2975',
+  player:'#00fff0', playerD:'#0aa9a3',
+  inimigos:['#ff2975','#ffd319','#9d4edd','#ff7b00'],
+  buraco:'#0a0a14', arvore:'#1c6b3c', tronco:'#7a4a1f',
+  txt:'#00fff0', txt2:'#ff2975', branco:'#ffffff'
+};
+
+/* ---------- áudio retrô (WebAudio, sem arquivos) ---------- */
+let AC = null;
+function audio(){ if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); return AC; }
+function beep(freq, dur, type, vol, slide){
+  if(!window.somLigado) return;
+  try{
+    const a = audio(), o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(freq, a.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(slide, a.currentTime + dur);
+    g.gain.setValueAtTime(vol || .08, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001, a.currentTime + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(); o.stop(a.currentTime + dur);
+  }catch(e){}
+}
+const sfx = {
+  lane : () => beep(520, .07, 'square', .05),
+  crash: () => { beep(160, .5, 'sawtooth', .12, 40); beep(90, .6, 'square', .1, 30); },
+  km   : () => { beep(660, .08, 'square', .06); setTimeout(()=>beep(880,.1,'square',.06), 90); },
+  start: () => { beep(440,.09,'square',.06); setTimeout(()=>beep(554,.09,'square',.06),100);
+                 setTimeout(()=>beep(659,.14,'square',.07),200); }
+};
+
+/* ---------- estado ---------- */
+const S = {
+  mode:'title',            // title | play | over
+  t:0, dist:0, km:0,
+  speed:120,               // px/s de rolagem
+  baseSpeed:120, maxSpeed:420,
+  lane:1, x:laneX(1),      // posição do jogador
+  obs:[],                  // obstáculos
+  decor:[],                // enfeites de acostamento
+  safe:1,                  // faixa garantidamente livre (random walk)
+  nextSpawn:0,             // distância p/ próxima leva
+  best:0,
+  shake:0, flash:0,
+  crashT:0, blink:0
+};
+const PLAYER_Y = H - 58;
+const CAR_W = 20, CAR_H = 30;
+
+/* ---------- sprites em pixel art (matrizes) ----------
+   0 vazio · 1 cor principal · 2 escuro · 3 vidro · 4 branco */
+const CAR_SPR = [
+  '0011111100',
+  '0112222110',
+  '0122222210',
+  '1122222211',
+  '1123333211',
+  '1123333211',
+  '1122222211',
+  '0122222210',
+  '1122222211',
+  '1123333211',
+  '1122222211',
+  '1112222111',
+  '0111111110',
+  '0410000140'
+];
+function drawCar(x, y, main, dark){
+  const px = 2, w = CAR_SPR[0].length * px, h = CAR_SPR.length * px;
+  const ox = Math.round(x - w/2), oy = Math.round(y - h/2);
+  for (let r = 0; r < CAR_SPR.length; r++){
+    for (let c = 0; c < CAR_SPR[r].length; c++){
+      const v = CAR_SPR[r][c];
+      if (v === '0') continue;
+      cx.fillStyle = v === '1' ? dark : v === '2' ? main : v === '3' ? '#bfefff' : '#ffffff';
+      cx.fillRect(ox + c*px, oy + r*px, px, px);
+    }
+  }
+  // sombra
+  cx.fillStyle = 'rgba(0,0,0,.35)';
+  cx.fillRect(ox + 2, oy + h, w - 4, 2);
+}
+
+function drawHole(x, y){
+  const ox = Math.round(x), oy = Math.round(y);
+  cx.fillStyle = P.buraco;
+  cx.fillRect(ox-9, oy-4, 18, 9);
+  cx.fillRect(ox-11, oy-2, 22, 5);
+  cx.fillStyle = '#000';
+  cx.fillRect(ox-7, oy-2, 14, 5);
+  cx.fillStyle = '#4a4a5e';                    // borda quebrada
+  cx.fillRect(ox-11, oy-4, 3, 2); cx.fillRect(ox+7, oy+4, 4, 2);
+  cx.fillRect(ox-4, oy-6, 5, 2);
+}
+
+function drawTree(x, y){
+  const ox = Math.round(x), oy = Math.round(y);
+  // árvore caída atravessada na faixa (tronco + copa)
+  cx.fillStyle = P.tronco;
+  cx.fillRect(ox-12, oy-2, 16, 5);
+  cx.fillStyle = '#5e3717';
+  cx.fillRect(ox-12, oy+1, 16, 2);
+  cx.fillStyle = P.arvore;
+  cx.fillRect(ox+2, oy-7, 12, 14);
+  cx.fillStyle = '#2e9457';
+  cx.fillRect(ox+4, oy-5, 8, 10);
+  cx.fillStyle = '#1c6b3c';
+  cx.fillRect(ox+6, oy-3, 4, 6);
+}
+
+function drawPalm(x, y, flip){
+  const ox = Math.round(x), oy = Math.round(y), f = flip ? -1 : 1;
+  cx.fillStyle = '#5e3717';
+  cx.fillRect(ox-1, oy-14, 3, 14);
+  cx.fillStyle = P.arvore;
+  for (const [dx,dy] of [[-7,-16],[6,-16],[-4,-19],[3,-19],[0,-20]])
+    cx.fillRect(ox + dx*f, oy + dy, 5, 3);
+}
+
+function drawSign(x, y){
+  cx.fillStyle = '#888'; cx.fillRect(x, y-12, 2, 12);
+  cx.fillStyle = P.sol1; cx.fillRect(x-4, y-18, 10, 7);
+  cx.fillStyle = '#000'; cx.fillRect(x-2, y-16, 6, 3);
+}
+
+/* ---------- texto pixel (fonte embutida 3x5) ---------- */
+const FONT = {
+  '0':'111101101101111','1':'010110010010111','2':'111001111100111','3':'111001111001111',
+  '4':'101101111001001','5':'111100111001111','6':'111100111101111','7':'111001010010010',
+  '8':'111101111101111','9':'111101111001111','A':'010101111101101','B':'110101110101110',
+  'C':'111100100100111','D':'110101101101110','E':'111100110100111','F':'111100110100100',
+  'G':'111100101101111','H':'101101111101101','I':'111010010010111','J':'001001001101111',
+  'K':'101110100110101','L':'100100100100111','M':'101111111101101','N':'101111111111101',
+  'O':'111101101101111','P':'111101111100100','Q':'111101101111011','R':'111101110110101',
+  'S':'111100111001111','T':'111010010010010','U':'101101101101111','V':'101101101101010',
+  'W':'101101111111101','X':'101101010101101','Y':'101101010010010','Z':'111001010100111',
+  ' ':'000000000000000','.':'000000000000010',':':'000010000010000','!':'010010010000010',
+  '-':'000000111000000','/':'001001010100100','>':'100010001010100','<':'001010100010001'
+};
+function ptext(s, x, y, scale, color, center){
+  s = s.toUpperCase();
+  const cw = 4 * scale;
+  let ox = center ? Math.round(x - s.length * cw / 2) : x;
+  cx.fillStyle = color;
+  for (const ch of s){
+    const bits = FONT[ch] || FONT[' '];
+    for (let i = 0; i < 15; i++){
+      if (bits[i] === '1')
+        cx.fillRect(ox + (i%3)*scale, y + ((i/3)|0)*scale, scale, scale);
+    }
+    ox += cw;
+  }
+}
+
+/* ---------- geração de obstáculos (rota sempre livre) ----------
+   Estratégia: "safe" é uma faixa que caminha aleatoriamente ±1.
+   Nenhum obstáculo nasce na faixa safe. Como safe só muda 1 faixa
+   por leva e o espaçamento vertical dá tempo de manobra, sempre
+   existe caminho alcançável. Carros inimigos descem mais devagar
+   que a pista, então nunca "fecham" uma faixa que estava livre
+   por trás — apenas abrem espaço. */
+function spawnWave(){
+  // caminha a faixa segura (±1) com 45% de chance
+  if (Math.random() < .45){
+    S.safe += Math.random() < .5 ? -1 : 1;
+    S.safe = Math.max(0, Math.min(LANES-1, S.safe));
+  }
+  const lanes = [0,1,2,3].filter(l => l !== S.safe);
+  // quantidade cresce com a velocidade (1 a 3)
+  const diff = (S.speed - S.baseSpeed) / (S.maxSpeed - S.baseSpeed);
+  let n = 1 + (Math.random() < .35 + diff*.45 ? 1 : 0) + (Math.random() < diff*.5 ? 1 : 0);
+  // embaralha e pega n faixas
+  for (let i = lanes.length-1; i > 0; i--){
+    const j = (Math.random()*(i+1))|0; [lanes[i],lanes[j]] = [lanes[j],lanes[i]];
+  }
+  for (let k = 0; k < Math.min(n, lanes.length); k++){
+    const l = lanes[k];
+    const r = Math.random();
+    const type = r < .5 ? 'car' : r < .78 ? 'hole' : 'tree';
+    S.obs.push({
+      type, lane:l, x:laneX(l),
+      y: -20 - Math.random()*26,
+      col: P.inimigos[(Math.random()*P.inimigos.length)|0],
+      vy: type === 'car' ? .55 + Math.random()*.15 : 1   // fração da vel. da pista
+    });
+  }
+  // espaçamento: distância p/ próxima leva (garante manobra)
+  S.nextSpawn = 95 + Math.random()*50;
+}
+
+function spawnDecor(){
+  const side = Math.random() < .5;
+  const x = side ? ROAD_X - 8 - Math.random()*12 : ROAD_X + ROAD_W + 8 + Math.random()*12;
+  S.decor.push({ kind: Math.random() < .8 ? 'palm' : 'sign', x, y:-22, flip:!side });
+}
+
+/* ---------- controles ---------- */
+function move(dir){
+  if (S.mode !== 'play') return;
+  const nl = Math.max(0, Math.min(LANES-1, S.lane + dir));
+  if (nl !== S.lane){ S.lane = nl; sfx.lane(); }
+}
+let tx0 = 0, ty0 = 0, tmoved = false;
+window.addEventListener('touchstart', e => {
+  tx0 = e.touches[0].clientX; ty0 = e.touches[0].clientY; tmoved = false;
+  audio();
+}, {passive:true});
+window.addEventListener('touchmove', e => {
+  const dx = e.touches[0].clientX - tx0;
+  if (!tmoved && Math.abs(dx) > 28){       // swipe
+    move(dx > 0 ? 1 : -1);
+    tx0 = e.touches[0].clientX;            // permite swipes encadeados
+    tmoved = true;
+    setTimeout(() => tmoved = false, 60);
+  }
+}, {passive:true});
+window.addEventListener('touchend', e => {
+  if (S.mode !== 'play' && !tmoved) action();
+}, {passive:true});
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft'  || e.key === 'a') move(-1);
+  if (e.key === 'ArrowRight' || e.key === 'd') move(1);
+  if ((e.key === ' ' || e.key === 'Enter') && S.mode !== 'play') action();
+});
+window.addEventListener('mousedown', () => { audio(); if (S.mode !== 'play') action(); });
+
+function action(){
+  if (S.mode === 'title' || S.mode === 'over') startGame();
+}
+function startGame(){
+  S.mode = 'play'; S.t = 0; S.dist = 0; S.km = 0;
+  S.speed = S.baseSpeed; S.lane = 1; S.x = laneX(1);
+  S.obs = []; S.decor = []; S.safe = 1; S.nextSpawn = 60;
+  S.shake = 0; S.flash = 0;
+  sfx.start();
+}
+
+/* ---------- colisão ---------- */
+function hit(o){
+  const px = S.x, py = PLAYER_Y;
+  const hw = { car:15, hole:11, tree:13 }[o.type];
+  const hh = { car:24, hole:6,  tree:8  }[o.type];
+  return Math.abs(o.x - px) < (CAR_W/2 + hw/2) - 3 &&
+         Math.abs(o.y - py) < (CAR_H/2 + hh/2) - 3;
+}
+function crash(){
+  S.mode = 'over';
+  S.best = Math.max(S.best, S.km);
+  S.shake = 14; S.flash = 1; S.crashT = 0;
+  sfx.crash();
+}
+
+/* ---------- desenho de cenário ---------- */
+let stripeOff = 0, gramaOff = 0;
+function drawWorld(){
+  // céu synthwave (visível nas laterais superiores? aqui tudo é pista,
+  // então o "céu" vira o horizonte de grade no topo)
+  const g = cx.createLinearGradient(0,0,0,40);
+  g.addColorStop(0, P.ceu1); g.addColorStop(1, P.ceu2);
+  cx.fillStyle = g; cx.fillRect(0,0,W,40);
+  // sol retrô
+  cx.fillStyle = P.sol1;
+  for (let i=0;i<7;i++){
+    const r = 16 - i*1.5;
+    cx.fillStyle = i%2 ? P.sol2 : P.sol1;
+    cx.fillRect(W/2 - r, 26 - i*3, r*2, 2.4);
+  }
+  // grama
+  cx.fillStyle = P.grama; cx.fillRect(0, 38, W, H-38);
+  cx.fillStyle = P.grama2;
+  const gsz = 16;
+  for (let y = 38 - gsz + (gramaOff % gsz); y < H; y += gsz)
+    for (let x = 0; x < W; x += gsz)
+      if (((x/gsz + ((y-gramaOff)/gsz|0)) | 0) % 2 === 0) cx.fillRect(x, y, gsz, gsz/2);
+
+  // asfalto
+  cx.fillStyle = P.asfalto; cx.fillRect(ROAD_X, 38, ROAD_W, H-38);
+  // textura sutil
+  cx.fillStyle = P.asfalto2;
+  for (let y = 38 + (stripeOff*.5 % 8); y < H; y += 8)
+    cx.fillRect(ROAD_X, y, ROAD_W, 2);
+
+  // bordas zebradas
+  const zeb = 10;
+  for (let y = 38 - zeb + (stripeOff % (zeb*2)); y < H; y += zeb*2){
+    cx.fillStyle = P.borda;
+    cx.fillRect(ROAD_X-4, y, 4, zeb); cx.fillRect(ROAD_X+ROAD_W, y, 4, zeb);
+    cx.fillStyle = P.bordaB;
+    cx.fillRect(ROAD_X-4, y+zeb, 4, zeb); cx.fillRect(ROAD_X+ROAD_W, y+zeb, 4, zeb);
+  }
+  // faixas tracejadas
+  cx.fillStyle = P.faixa;
+  for (let l = 1; l < LANES; l++){
+    const x = ROAD_X + LANE_W*l - 1;
+    for (let y = 38 - 18 + (stripeOff % 18); y < H; y += 18)
+      cx.fillRect(x, y, 2, 9);
+  }
+}
+
+/* ---------- HUD ---------- */
+function drawHUD(){
+  cx.fillStyle = 'rgba(5,0,15,.55)';
+  cx.fillRect(0, 0, W, 14);
+  ptext('KM ' + S.km.toFixed(2), 4, 4, 1, P.txt);
+  const v = Math.round(S.speed * 1.1);
+  ptext(v + ' K/H', W - 4 - (String(v).length+4)*4, 4, 1, P.txt2);
+}
+
+/* ---------- telas ---------- */
+function drawTitle(){
+  drawWorld();
+  cx.fillStyle = 'rgba(5,0,15,.66)'; cx.fillRect(0,0,W,H);
+  ptext('TURBO', W/2, 56, 4, P.txt2, true);
+  ptext('ESTRADA', W/2, 84, 3, P.txt, true);
+  ptext('86', W/2, 106, 4, P.sol1 || '#ffd319', true);
+  drawCar(W/2, 160, P.player, P.playerD);
+  if ((S.blink|0) % 2 === 0) ptext('TOQUE PARA JOGAR', W/2, 196, 1, P.branco, true);
+  ptext('DESLIZE < > P/ DESVIAR', W/2, 216, 1, '#9d8fb8', true);
+  ptext('CARROS BURACOS ARVORES', W/2, 228, 1, '#9d8fb8', true);
+  if (S.best > 0) ptext('RECORDE ' + S.best.toFixed(2) + ' KM', W/2, 248, 1, P.sol1, true);
+}
+function drawOver(){
+  cx.fillStyle = 'rgba(120,0,30,' + (S.flash*.5) + ')'; cx.fillRect(0,0,W,H);
+  cx.fillStyle = 'rgba(5,0,15,.72)'; cx.fillRect(0, 70, W, 130);
+  ptext('BATEU!', W/2, 84, 3, P.txt2, true);
+  ptext('DISTANCIA', W/2, 116, 1, '#9d8fb8', true);
+  ptext(S.km.toFixed(2) + ' KM', W/2, 128, 2, P.branco, true);
+  const rec = S.km >= S.best && S.km > 0;
+  ptext((rec ? 'NOVO RECORDE!' : 'RECORDE ' + S.best.toFixed(2) + ' KM'),
+        W/2, 152, 1, rec ? P.sol1 : '#9d8fb8', true);
+  if (S.crashT > .9 && (S.blink|0) % 2 === 0)
+    ptext('TOQUE PARA CORRER DE NOVO', W/2, 178, 1, P.txt, true);
+}
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last) / 1000, .05); last = now;
+  S.t += dt; S.blink += dt * 2;
+
+  cx.save();
+  if (S.shake > 0){
+    S.shake = Math.max(0, S.shake - dt*40);
+    cx.translate((Math.random()-.5)*S.shake, (Math.random()-.5)*S.shake);
+  }
+  S.flash = Math.max(0, S.flash - dt*1.5);
+
+  if (S.mode === 'title'){ drawTitle(); cx.restore(); return; }
+
+  if (S.mode === 'play'){
+    // aceleração progressiva
+    S.speed = Math.min(S.maxSpeed, S.speed + dt * 4.5);
+    const sc = S.speed * dt;
+    S.dist += sc;
+    const km = S.dist / 900;                    // escala arcade
+    if ((km|0) > (S.km|0) && km >= 1) sfx.km(); // bip a cada km
+    S.km = km;
+
+    stripeOff += sc; gramaOff += sc;
+
+    // spawns por distância
+    S.nextSpawn -= sc;
+    if (S.nextSpawn <= 0) spawnWave();
+    if (Math.random() < dt * 2.2) spawnDecor();
+
+    // move jogador (lerp suave até o centro da faixa)
+    const tgt = laneX(S.lane);
+    S.x += (tgt - S.x) * Math.min(1, dt * 14);
+
+    // move obstáculos
+    for (const o of S.obs){
+      o.y += sc * o.vy;
+      if (o.type === 'car') o.y += 6 * dt;      // leve avanço próprio
+      if (S.mode === 'play' && hit(o)) { crash(); break; }
+    }
+    S.obs = S.obs.filter(o => o.y < H + 30);
+    for (const d of S.decor) d.y += sc;
+    S.decor = S.decor.filter(d => d.y < H + 30);
+  }
+
+  if (S.mode === 'over') S.crashT += dt;
+
+  /* ----- desenho ----- */
+  drawWorld();
+  for (const d of S.decor)
+    d.kind === 'palm' ? drawPalm(d.x, d.y, d.flip) : drawSign(d.x, d.y);
+  for (const o of S.obs){
+    if (o.type === 'car')  drawCar(o.x, o.y, o.col, '#3a1030');
+    if (o.type === 'hole') drawHole(o.x, o.y);
+    if (o.type === 'tree') drawTree(o.x, o.y);
+  }
+  // jogador (piscando após batida)
+  if (S.mode !== 'over' || (S.blink|0) % 2 === 0 || S.crashT > 1.4)
+    drawCar(S.x, PLAYER_Y, P.player, P.playerD);
+  // fumaça na batida
+  if (S.mode === 'over' && S.crashT < .8){
+    cx.fillStyle = 'rgba(255,120,0,' + (0.8 - S.crashT) + ')';
+    for (let i = 0; i < 5; i++)
+      cx.fillRect(S.x - 10 + Math.random()*20, PLAYER_Y - 14 + Math.random()*24,
+                  3 + Math.random()*4, 3 + Math.random()*4);
+  }
+
+  drawHUD();
+  if (S.mode === 'over') drawOver();
+  if (S.flash > 0){
+    cx.fillStyle = 'rgba(255,255,255,' + S.flash*.6 + ')';
+    cx.fillRect(0,0,W,H);
+  }
+  cx.restore();
+}
+requestAnimationFrame(frame);
+</script>
+
+<script>
+/* ===== Integração com o Portal: tema claro/escuro + som (persistidos) ===== */
+(function(){
+  var root = document.documentElement;
+  var temaBtn = document.getElementById('portalTemaBtn');
+  var temaIcone = document.getElementById('portalTemaIcone');
+  var temaTxt = document.getElementById('portalTemaTxt');
+  var somBtn = document.getElementById('portalSomBtn');
+  var somIcone = document.getElementById('portalSomIcone');
+
+  function aplicarTema(t){
+    root.setAttribute('data-theme', t);
+    temaIcone.textContent = (t === 'dark') ? '🌙' : '☀️';
+    temaTxt.textContent = (t === 'dark') ? 'ESCURO' : 'CLARO';
+  }
+  aplicarTema(root.getAttribute('data-theme') || 'dark');
+  temaBtn.addEventListener('click', function(){
+    var novo = (root.getAttribute('data-theme') === 'dark') ? 'light' : 'dark';
+    aplicarTema(novo);
+    try{ localStorage.setItem('portal-tema', novo); }catch(e){}
+  });
+
+  function lerSom(){
+    try{ var v = localStorage.getItem('jogos-som'); return v === null ? true : v === '1'; }
+    catch(e){ return true; }
+  }
+  function aplicarSom(on){
+    window.somLigado = on;
+    somIcone.textContent = on ? '🔊' : '🔇';
+    try{ localStorage.setItem('jogos-som', on ? '1' : '0'); }catch(e){}
+  }
+  aplicarSom(lerSom());
+  somBtn.addEventListener('click', function(){ aplicarSom(!window.somLigado); });
+})();
+</script>
+</body>
+</html>

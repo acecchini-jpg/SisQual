@@ -288,28 +288,32 @@ const SISTEMAS = [
     tag  : "Qualidade",
     desc : "Gestão de refugo industrial — índice e custo de scrap, Pareto de defeitos e produtos, análise por equipamento e turno, com sincronização em nuvem.",
     url  : "https://acecchini-jpg.github.io/ScrapIQ/",
-    icone: "refugo"
+    icone: "refugo",
+    jogo : "berzerk-easter-egg.html"
   },
   {
     nome : "Dash SF",
     tag  : "Produção",
     desc : "Dashboard de programação diária — aderência ao plano (total, acabado e WIP), downtime e Pareto de motivos de parada por produto, máquina e molde.",
     url  : "https://acecchini-jpg.github.io/DashSF/",
-    icone: "programacao"
+    icone: "programacao",
+    jogo : "turbo-easter-egg.html"
   },
   {
     nome : "Dash PDM",
     tag  : "Indicadores",
     desc : "PDM KPI Tracking — dashboard executivo de indicadores por área, entrada diária de dados, Gemba Walk, relatório semanal de gestão à vista e importação de Excel.",
     url  : "https://acecchini-jpg.github.io/DashPDM/",
-    icone: "grafico"
+    icone: "grafico",
+    jogo : "snake-easter-egg.html"
   },
   {
     nome : "Action Plan",
     tag  : "Qualidade",
     desc : "Gestão de planos de ação — abertura, acompanhamento e encerramento de ações corretivas por responsável e prazo.",
     url  : "https://acecchini-jpg.github.io/ActionPlan/",
-    icone: "plano"
+    icone: "plano",
+    jogo : "hero-easter-egg.html"
   }
 ];
 
@@ -326,7 +330,7 @@ const ICONES = {
 (function renderCards(){
   const grid = document.getElementById('grid');
   grid.innerHTML = SISTEMAS.map(s => (
-    '<a class="card" href="' + s.url + '" target="_blank" rel="noopener noreferrer">' +
+    '<a class="card" href="' + s.url + '" target="_blank" rel="noopener noreferrer" data-jogo="' + s.jogo + '">' +
       '<span class="mini-arc" aria-hidden="true"><i></i><i></i><i></i></span>' +
       '<span class="card-icon">' + (ICONES[s.icone] || ICONES.grafico) + '</span>' +
       '<span class="card-head"><h2>' + s.nome + '</h2><span class="tag">' + s.tag + '</span></span>' +
@@ -336,6 +340,17 @@ const ICONES = {
       '</span>' +
     '</a>'
   )).join('');
+
+  /* Easter egg: shift+click em um card abre o jogo associado, em vez do sistema real */
+  grid.querySelectorAll('.card').forEach(function(card){
+    card.addEventListener('click', function(e){
+      if (!e.shiftKey) return;
+      const jogo = card.getAttribute('data-jogo');
+      if (!jogo) return;
+      e.preventDefault();
+      window.open(jogo, '_blank', 'noopener');
+    });
+  });
 })();
 
 /* ===== Tema claro / escuro =====
