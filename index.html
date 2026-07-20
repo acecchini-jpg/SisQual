@@ -258,7 +258,7 @@
 </header>
 
 <section class="hero">
-  <div class="dot-arc" aria-hidden="true"><span></span><span></span><span></span></div>
+  <div class="dot-arc" id="dotArcEgg" aria-hidden="true"><span></span><span></span><span></span></div>
   <div class="eyebrow">Röchling Automotive - Itupeva</div>
   <h1>Portal de Sistemas</h1>
   <p>Acesso centralizado às ferramentas de gestão da produção e da qualidade. Selecione um sistema para abrir.</p>
@@ -268,7 +268,7 @@
 
 <footer>
   <b>Röchling</b> · Portal interno de sistemas<br>
-  &copy; 2026 - A M Cecchini
+  <span id="copyEgg">&copy; 2026 - A M Cecchini</span>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -282,6 +282,36 @@
    - url  : endereço do sistema (abre em nova aba)
    - icone: 'refugo' | 'programacao' | 'plano' | 'grafico' | 'engrenagem'
    ===================================================================== */
+
+/* ===== Toque longo — equivalente ao shift+click nos dispositivos sem teclado =====
+   Segurar por ~600ms dispara a mesma ação; toque curto normal não é afetado. */
+function attachLongPress(el, onLongPress){
+  if (!el) return;
+  const HOLD_MS = 600, MOVE_TOL = 10;
+  let timer = null, startX = 0, startY = 0, disparado = false;
+  function limpar(){ if (timer){ clearTimeout(timer); timer = null; } }
+  el.addEventListener('touchstart', function(e){
+    if (e.touches.length !== 1) return;
+    disparado = false;
+    startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    limpar();
+    timer = setTimeout(function(){
+      disparado = true;
+      onLongPress(e);
+    }, HOLD_MS);
+  }, { passive:true });
+  el.addEventListener('touchmove', function(e){
+    if (!timer) return;
+    const dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
+    if (Math.abs(dx) > MOVE_TOL || Math.abs(dy) > MOVE_TOL) limpar();
+  }, { passive:true });
+  el.addEventListener('touchend', function(e){
+    limpar();
+    if (disparado) e.preventDefault(); // suprime o toque curto/navegação que seguiria o toque longo
+  });
+  el.addEventListener('touchcancel', limpar);
+}
+
 const SISTEMAS = [
   {
     nome : "ScrapIQ",
@@ -341,15 +371,37 @@ const ICONES = {
     '</a>'
   )).join('');
 
-  /* Easter egg: shift+click em um card abre o jogo associado, em vez do sistema real */
+  /* Easter egg: shift+click (desktop) ou toque longo (celular) em um card abre o jogo associado */
+  function abrirJogoDoCard(card){
+    const jogo = card.getAttribute('data-jogo');
+    if (jogo) window.open(jogo, '_blank', 'noopener');
+  }
   grid.querySelectorAll('.card').forEach(function(card){
     card.addEventListener('click', function(e){
       if (!e.shiftKey) return;
-      const jogo = card.getAttribute('data-jogo');
-      if (!jogo) return;
       e.preventDefault();
-      window.open(jogo, '_blank', 'noopener');
+      abrirJogoDoCard(card);
     });
+    attachLongPress(card, function(){ abrirJogoDoCard(card); });
+  });
+})();
+
+/* Easter egg: shift+click (desktop) ou toque longo (celular) nos três pontinhos do hero,
+   ou no copyright do rodapé, abre o Lissajous */
+(function easterEggLissajous(){
+  function abrirLissajous(){
+    window.open('lissajous.html', '_blank', 'noopener');
+  }
+  const dots = document.getElementById('dotArcEgg');
+  const copy = document.getElementById('copyEgg');
+  [dots, copy].forEach(function(el){
+    if (!el) return;
+    el.addEventListener('click', function(e){
+      if (!e.shiftKey) return;
+      e.preventDefault();
+      abrirLissajous();
+    });
+    attachLongPress(el, abrirLissajous);
   });
 })();
 
@@ -376,16 +428,20 @@ const ICONES = {
   const preferido = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
   aplicar(salvo || preferido);
 
+  /* Easter egg: shift+click (desktop) ou toque longo (celular) abre o jogo da velha */
+  function abrirJogoDaVelha(){
+    window.open('jogo-da-velha.html', '_blank', 'noopener');
+  }
   btn.addEventListener('click', function(e){
-    /* Easter egg: shift+click abre o jogo da velha (respeita o tema atual) */
     if (e.shiftKey){
-      window.open('jogo-da-velha.html', '_blank', 'noopener');
+      abrirJogoDaVelha();
       return;
     }
     const novo = (root.getAttribute('data-theme') === 'dark') ? 'light' : 'dark';
     aplicar(novo);
     salvar(novo);
   });
+  attachLongPress(btn, abrirJogoDaVelha);
 })();
 
 /* =====================================================================
@@ -630,13 +686,17 @@ const ICONES = {
     avionGroup.lookAt(alvo);
   }
 
-  canvas.style.pointerEvents = 'auto'; // permite detectar o shift+click sem interferir nos cards (acima, em z-index maior)
-  canvas.addEventListener('click', function(e){
-    if (!e.shiftKey) return;
+  canvas.style.pointerEvents = 'auto'; // permite detectar o shift+click / toque longo sem interferir nos cards (acima, em z-index maior)
+  function alternarAviao(){
     avionAtivo = !avionAtivo;
     avionGroup.visible = avionAtivo;
     if (reduceMotion){ atualizarAviao(0); renderer.render(scene, camera); }
+  }
+  canvas.addEventListener('click', function(e){
+    if (!e.shiftKey) return;
+    alternarAviao();
   });
+  attachLongPress(canvas, alternarAviao);
 
   /* --- Redimensionamento --- */
   function resize(){

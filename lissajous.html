@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<script>
+/* Aplica o tema salvo pelo portal (mesma chave: portal-tema) antes da pintura da página */
+(function(){
+  try{
+    var t = localStorage.getItem('portal-tema');
+    if(!t){ t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+    document.documentElement.setAttribute('data-theme', t);
+  }catch(e){ document.documentElement.setAttribute('data-theme','dark'); }
+})();
+</script>
+<title>Tabela de Lissajous</title>
+<style>
+  :root{
+    --bg:#0a0a16;
+    --panel:#12122400;
+    --panel-solid:rgba(18,18,38,.92);
+    --ink:#cdd3ff;
+    --accent:#7de3ff;
+    --line:#2a2a4a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:var(--bg);font-family:"Segoe UI",system-ui,sans-serif;color:var(--ink)}
+  canvas#cv{display:block;width:100vw;height:100vh}
+
+  /* ---------- painel de controles ---------- */
+  #panel{
+    position:fixed;top:10px;right:10px;z-index:10;
+    background:var(--panel-solid);backdrop-filter:blur(8px);
+    border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;width:250px;max-width:calc(100vw - 20px);
+    max-height:calc(100vh - 20px);overflow-y:auto;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);
+    transition:transform .25s ease,opacity .25s ease;
+    font-size:13px;
+  }
+  #panel.hidden{transform:translateX(calc(100% + 20px));opacity:0;pointer-events:none}
+  #panel h1{font-size:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  .ctl{margin-bottom:12px}
+  .ctl label{display:flex;justify-content:space-between;margin-bottom:4px;color:#9aa0d0}
+  .ctl label b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent);height:22px;cursor:pointer}
+  .row2{display:flex;gap:10px}
+  .row2 .ctl{flex:1}
+  .chk{display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;user-select:none}
+  .chk input{accent-color:var(--accent);width:16px;height:16px;cursor:pointer}
+  .btns{display:flex;gap:8px;margin-top:6px}
+  button{
+    flex:1;background:#1d1d3d;border:1px solid var(--line);color:var(--ink);
+    padding:8px 0;border-radius:8px;font-size:13px;cursor:pointer;transition:background .15s;
+  }
+  button:hover{background:#28285a}
+  button.primary{background:#1c3a52;border-color:#2e6a92;color:var(--accent)}
+  #toggleBtn{
+    position:fixed;top:10px;right:10px;z-index:11;flex:none;
+    width:40px;height:40px;border-radius:10px;font-size:18px;line-height:1;
+    background:var(--panel-solid);backdrop-filter:blur(8px);
+    display:flex;align-items:center;justify-content:center;
+  }
+  #panel:not(.hidden) ~ #toggleBtn{right:270px}
+  @media (max-width:560px){ #panel:not(.hidden) ~ #toggleBtn{right:auto;left:10px} }
+  #hint{position:fixed;left:12px;bottom:10px;z-index:5;font-size:11px;color:#575e8f;pointer-events:none}
+
+  /* ---------- integração com o Portal: ícones no mesmo padrão do ☰ ---------- */
+  #topBar{ position:fixed; top:10px; right:60px; z-index:11; display:flex; gap:8px; }
+  #panel:not(.hidden) ~ #topBar{ right:320px }
+  @media (max-width:560px){ #panel:not(.hidden) ~ #topBar{ right:auto; left:60px } }
+  .sqBtn{
+    width:40px;height:40px;border-radius:10px;font-size:18px;line-height:1;flex:none;
+    background:var(--panel-solid);backdrop-filter:blur(8px);
+    border:none;color:var(--ink);text-decoration:none;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:background .15s;
+  }
+  .sqBtn:hover{background:#28285a}
+
+  /* ---------- tema claro (sincronizado com o Portal Röchling) ---------- */
+  html[data-theme="light"]{
+    --bg:#eef3fa;
+    --panel-solid:rgba(255,255,255,0.94);
+    --ink:#1d2b3d;
+    --accent:#1563AE;
+    --line:#c7d4e6;
+  }
+  html[data-theme="light"] .ctl label{ color:#5a6b7e; }
+  html[data-theme="light"] #hint{ color:#7788a0; }
+  html[data-theme="light"] button{ background:#e7edf7; border-color:#c7d4e6; color:#1d2b3d; }
+  html[data-theme="light"] button:hover{ background:#d7e2f2; }
+  html[data-theme="light"] button.primary{ background:#d9e8f5; border-color:#1563AE; color:#0c3f73; }
+  html[data-theme="light"] .sqBtn:hover{ background:#d7e2f2; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="panel">
+  <h1>Tabela de Lissajous</h1>
+  <div class="row2">
+    <div class="ctl">
+      <label>Colunas <b id="vCols">3</b></label>
+      <input type="range" id="cols" min="1" max="12" value="3">
+    </div>
+    <div class="ctl">
+      <label>Linhas <b id="vRows">3</b></label>
+      <input type="range" id="rows" min="1" max="12" value="3">
+    </div>
+  </div>
+  <div class="ctl">
+    <label>Velocidade <b id="vSpeed">1.0×</b></label>
+    <input type="range" id="speed" min="0" max="300" value="100">
+  </div>
+  <div class="ctl">
+    <label>Fase δ <b id="vPhase">90°</b></label>
+    <input type="range" id="phase" min="0" max="360" value="90">
+    <label class="chk" style="margin-top:6px"><input type="checkbox" id="phaseAuto"> Fase automática (girar curvas)</label>
+  </div>
+  <label class="chk"><input type="checkbox" id="cross" checked> Linhas de intersecção (linha/coluna)</label>
+  <label class="chk"><input type="checkbox" id="dots" checked> Ponto atual em cada figura</label>
+  <label class="chk"><input type="checkbox" id="trail" checked> Modo traçado (desenho progressivo)</label>
+  <div id="trailOpts" style="display:block;margin:2px 0 4px 24px">
+    <div class="ctl">
+      <label>Comprimento do traçado <b id="vLen">100%</b></label>
+      <input type="range" id="tlen" min="1" max="100" value="100">
+    </div>
+    <label class="chk"><input type="checkbox" id="clearCycle"> Limpar e reiniciar a cada ciclo</label>
+  </div>
+  <label class="chk"><input type="checkbox" id="labels"> Mostrar razão a:b</label>
+  <label class="chk"><input type="checkbox" id="sound"> Som</label>
+  <div class="btns">
+    <button id="pause" class="primary">⏸ Pausar</button>
+    <button id="reset">↺ Reiniciar</button>
+  </div>
+</div>
+<div id="topBar">
+  <a class="sqBtn" href="index.html" title="Voltar ao portal Röchling">⤺</a>
+  <button class="sqBtn" id="temaBtn" title="Alternar tema claro/escuro">🌙</button>
+</div>
+<button id="toggleBtn" title="Controles">☰</button>
+<div id="hint">Toque em ☰ para os controles</div>
+
+<script>
+(function(){
+  'use strict';
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+
+  // ---------------- estado ----------------
+  const S = {
+    cols: 3, rows: 3,
+    speed: 1.0,           // ciclos base por ~6s
+    phase: Math.PI/2,     // δ aplicado ao eixo X
+    phaseAuto: false,     // varre δ continuamente (0→360°)
+    cross: true, dots: true, trail: true, labels: false,
+    trailLen: 1.0,        // fração do período visível no modo traçado
+    clearCycle: false,    // true = limpa e reinicia; false = mantém por cima
+    focusOn: false, focusCell: null, focusA: 0, dt: 0.016,
+    paused: false,
+    t: 0                  // tempo-fase global (rad do oscilador de freq 1)
+  };
+  let W=0, H=0, DPR=1, geo=null, last=performance.now();
+
+  // ---------------- tema (cores do canvas, sincronizadas com o Portal) ----------------
+  const TEMA = {
+    bg:'#0a0a16', masterTrack:'rgba(160,160,200,0.28)',
+    dot:'#ffffff', dotGlowInner:'rgba(255,255,255,0.95)', dotGlowMid:'rgba(255,255,255,0.25)',
+    guide:'rgba(150,170,255,0.35)'
+  };
+  function aplicarTemaCanvas(escuro){
+    if(escuro){
+      TEMA.bg='#0a0a16'; TEMA.masterTrack='rgba(160,160,200,0.28)';
+      TEMA.dot='#ffffff'; TEMA.dotGlowInner='rgba(255,255,255,0.95)'; TEMA.dotGlowMid='rgba(255,255,255,0.25)';
+      TEMA.guide='rgba(150,170,255,0.35)';
+    } else {
+      TEMA.bg='#eef3fa'; TEMA.masterTrack='rgba(21,99,174,0.30)';
+      TEMA.dot='#0c3f73'; TEMA.dotGlowInner='rgba(12,63,115,0.85)'; TEMA.dotGlowMid='rgba(12,63,115,0.16)';
+      TEMA.guide='rgba(21,99,174,0.35)';
+    }
+  }
+
+  // ---------------- layout ----------------
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio||1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W*DPR; cv.height = H*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    computeGeo();
+  }
+
+  function computeGeo(){
+    // grid de (cols+1) x (rows+1): linha 0 e coluna 0 são os masters
+    const pad = Math.max(6, Math.min(W,H)*0.012);
+    const cw = (W - pad*2) / (S.cols+1);
+    const ch = (H - pad*2) / (S.rows+1);
+    const cell = Math.min(cw, ch);
+    const gw = cell*(S.cols+1), gh = cell*(S.rows+1);
+    const ox = (W-gw)/2, oy = (H-gh)/2;
+    const r  = cell*0.40;   // raio das figuras/círculos
+    geo = { cell, ox, oy, r,
+      cx: c => ox + cell*(c+1) + cell/2,   // centro X da coluna c (0..cols-1)
+      cy: r_ => oy + cell*(r_+1) + cell/2  // centro Y da linha r (0..rows-1)
+    };
+  }
+
+  // ---------------- cores ----------------
+  // matiz percorrendo o parâmetro da curva (aspecto arco-íris do original)
+  function hue(u, alp){
+    return 'hsl(' + ((u*360+230)%360) + ' 90% 60% / ' + (alp===undefined?1:alp) + ')';
+  }
+
+  // ---------------- desenho ----------------
+  function curvePoint(a, b, u){
+    // u em [0,1) percorre um período comum; ponto atual usa u = fase global
+    const T = 2*Math.PI*u;
+    return [ Math.sin(a*T + S.phase), Math.sin(b*T) ];
+  }
+
+  function strokeSpan(a, b, x0, y0, r, u0, u1, steps, alp){
+    // desenha o trecho da curva de u0 a u1 (sem wrap), colorido por matiz
+    if(u1<=u0) return;
+    const n = Math.max(2, Math.ceil((u1-u0)*steps));
+    let prev = curvePoint(a,b,u0);
+    for(let i=1;i<=n;i++){
+      const u = u0 + (u1-u0)*(i/n);
+      const p = curvePoint(a,b,u);
+      ctx.strokeStyle = hue(u%1, alp);
+      ctx.beginPath();
+      ctx.moveTo(x0+prev[0]*r, y0+prev[1]*r);
+      ctx.lineTo(x0+p[0]*r,   y0+p[1]*r);
+      ctx.stroke();
+      prev = p;
+    }
+  }
+
+  function strokeComet(a, b, x0, y0, r, uNow, totalU, steps){
+    // "cometa": janela de comprimento trailLen atrás do ponto atual, com fade na cauda
+    const L = S.trailLen;
+    let u0 = uNow - L;
+    if(S.clearCycle && u0 < 0) u0 = 0;              // sem wrap: limpa e reinicia
+    if(!S.clearCycle && totalU < uNow) u0 = Math.max(u0, 0);
+    const n = Math.max(2, Math.ceil(L*steps));
+    let prev = null;
+    for(let i=n;i>=0;i--){
+      let u = uNow - L*(i/n);
+      if(u < u0 - 1e-9) { continue; }
+      let uw = u;                                    // parâmetro real (pode ser <0 → wrap)
+      if(uw < 0){
+        if(totalU < 1) { prev=null; continue; }      // ainda no 1º ciclo: nada antes de 0
+        uw += 1;
+      }
+      const p = curvePoint(a,b,uw);
+      if(prev){
+        const alp = 0.12 + 0.88*(1 - i/n);           // cauda esmaece
+        ctx.strokeStyle = hue(((uw%1)+1)%1, alp);
+        ctx.beginPath();
+        ctx.moveTo(x0+prev[0]*r, y0+prev[1]*r);
+        ctx.lineTo(x0+p[0]*r,   y0+p[1]*r);
+        ctx.stroke();
+      }
+      prev = p;
+    }
+  }
+
+  function drawCurve(a, b, x0, y0, r, uNow, totalU){
+    const steps = Math.max(220, 90*Math.max(a,b));
+    ctx.lineWidth = Math.max(1.2, r*0.02);
+    ctx.lineCap = 'round';
+
+    if(!S.trail){
+      // abertura animada: no 1º ciclo (e após Reiniciar) desenha progressivamente, depois fica completa
+      strokeSpan(a,b,x0,y0,r, 0, Math.min(totalU,1), steps, 1);
+      return;
+    }
+
+    if(!S.clearCycle){
+      // "continua por cima": o que já foi desenhado permanece (mais apagado)
+      strokeSpan(a,b,x0,y0,r, 0, Math.min(totalU,1), steps, 0.30);
+    }
+    strokeComet(a,b,x0,y0,r, uNow, totalU, steps);   // cometa brilhante por cima
+  }
+
+  function drawMaster(x0, y0, r, freq, horizontalDriver){
+    // círculo cinza + bolinha branca girando com a frequência
+    ctx.strokeStyle = TEMA.masterTrack;
+    ctx.lineWidth = Math.max(1, r*0.03);
+    ctx.beginPath(); ctx.arc(x0, y0, r, 0, Math.PI*2); ctx.stroke();
+
+    const ang = freq*S.t + (horizontalDriver ? S.phase : 0);
+    const px = x0 + (horizontalDriver ? Math.sin(ang) : -Math.cos(ang))*r;
+    const py = y0 + (horizontalDriver ? -Math.cos(ang) : Math.sin(ang))*r;
+    // Driver horizontal (topo): x do ponto = sin(a t + δ) → alinha com as curvas; y = -cos fecha o círculo.
+    // Driver vertical (esquerda): y do ponto = sin(b t) → alinha com as curvas; x = -cos fecha o círculo.
+
+    const dr = Math.max(4, Math.min(r*0.22, Math.min(W,H)*0.018));
+    const g = ctx.createRadialGradient(px,py,0,px,py,dr*2.4);
+    g.addColorStop(0,TEMA.dotGlowInner);
+    g.addColorStop(0.4,TEMA.dotGlowMid);
+    g.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(px,py,dr*2.4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = TEMA.dot;
+    ctx.beginPath(); ctx.arc(px,py,dr,0,Math.PI*2); ctx.fill();
+    return [px, py];  // posição do ponto na tela
+  }
+
+  function frame(now){
+    const dt = Math.min((now-last)/1000, 0.1); last = now;
+    S.dt = dt;
+    if(!S.paused) S.t += dt * S.speed * 1.05;  // rad/s do oscilador base
+    if(S.phaseAuto && !S.paused){
+      S.phase = (S.phase + dt * 0.35 * S.speed) % (2*Math.PI);  // 360° em ~18s a 1×
+      const deg = Math.round(S.phase*180/Math.PI);
+      phaseSlider.value = deg;
+      phaseLabel.textContent = deg + '°';
+    }
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function render(){
+    ctx.fillStyle = TEMA.bg;
+    ctx.fillRect(0,0,W,H);
+
+    // fase normalizada do oscilador base (freq 1) → parâmetro u das curvas
+    const totalU = S.t/(2*Math.PI);
+    const uNow = totalU % 1;
+
+    // sai do foco se a célula deixou de existir (mudança nos sliders)
+    if(S.focusCell && (S.focusCell.c>=S.cols || S.focusCell.l>=S.rows)){
+      S.focusOn=false; S.focusCell=null; S.focusA=0;
+    }
+    // crossfade suave entre matriz e foco
+    const target = S.focusOn ? 1 : 0;
+    S.focusA += (target - S.focusA) * Math.min(1, S.dt*6);
+    if(Math.abs(target - S.focusA) < 0.002) S.focusA = target;
+
+    if(S.focusA < 1){
+      ctx.globalAlpha = 1 - S.focusA;
+      renderGrid(uNow, totalU);
+    }
+    if(S.focusA > 0 && S.focusCell){
+      ctx.globalAlpha = S.focusA;
+      renderFocus(uNow, totalU);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function renderFocus(uNow, totalU){
+    const {c,l} = S.focusCell;
+    const a=c+1, b=l+1;
+    const pad = Math.max(10, Math.min(W,H)*0.02);
+    const gap = pad;
+
+    // geradores com o MESMO raio da curva: as projeções das bolinhas
+    // caem exatamente sobre o ponto da curva (construção clássica)
+    const R = Math.min((W - pad*2 - gap)/4, (H - pad*2 - gap)/4);
+    const gw = 4*R + gap, gh = 4*R + gap;
+    const ox = (W - gw)/2, oy = (H - gh)/2;
+    const mx = ox + R,            my = oy + R;             // centros dos geradores
+    const cx = ox + 2*R + gap + R, cy = oy + 2*R + gap + R; // centro da curva
+
+    // círculos geradores (topo = freq X, esquerda = freq Y)
+    const dTop  = drawMaster(cx, my, R, a, true);
+    const dLeft = drawMaster(mx, cy, R, b, false);
+
+    // linhas-guia partindo das próprias bolinhas até a intersecção (o ponto da curva)
+    if(S.cross){
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = TEMA.guide;
+      ctx.beginPath(); ctx.moveTo(dTop[0], dTop[1]);  ctx.lineTo(dTop[0], cy + R); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(dLeft[0], dLeft[1]); ctx.lineTo(cx + R, dLeft[1]); ctx.stroke();
+    }
+
+    drawCurve(a,b,cx,cy,R,uNow,totalU);
+
+    // ponto atual = intersecção das projeções
+    const p = curvePoint(a,b,uNow);
+    const X = cx + p[0]*R, Y = cy + p[1]*R;
+    if(S.dots){
+      const dr = Math.max(4, Math.min(R*0.05, 10));
+      const g = ctx.createRadialGradient(X,Y,0,X,Y,dr*2.6);
+      g.addColorStop(0,TEMA.dotGlowInner);
+      g.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(X,Y,dr*2.6,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=TEMA.dot;
+      ctx.beginPath(); ctx.arc(X,Y,dr,0,Math.PI*2); ctx.fill();
+    }
+
+    // razão a:b aparecendo suavemente no quadrante livre
+    const alp = Math.pow(S.focusA, 2) * 0.55;
+    ctx.fillStyle = 'rgba(180,190,255,' + alp + ')';
+    ctx.font = '300 ' + Math.round(R*0.55) + 'px system-ui';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(a + ' : ' + b, mx, my);
+  }
+
+  function renderGrid(uNow, totalU){
+    const {r} = geo;
+
+    // masters do topo (colunas → eixo X, freq a = c+1)
+    const colX = [];
+    for(let c=0;c<S.cols;c++){
+      colX[c] = drawMaster(geo.cx(c), geo.oy + geo.cell/2, r, c+1, true)[0];
+    }
+    // masters da esquerda (linhas → eixo Y, freq b = l+1)
+    const rowY = [];
+    for(let l=0;l<S.rows;l++){
+      rowY[l] = drawMaster(geo.ox + geo.cell/2, geo.cy(l), r, l+1, false)[1];
+    }
+
+    // linhas-guia suaves
+    if(S.cross){
+      ctx.lineWidth = 1;
+      for(let c=0;c<S.cols;c++){
+        const g = ctx.createLinearGradient(0, geo.oy, 0, H);
+        g.addColorStop(0,'rgba(150,170,255,0.00)');
+        g.addColorStop(0.12,'rgba(150,170,255,0.28)');
+        g.addColorStop(1,'rgba(150,170,255,0.10)');
+        ctx.strokeStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(colX[c], geo.oy + geo.cell*0.5);
+        ctx.lineTo(colX[c], geo.oy + geo.cell*(S.rows+1));
+        ctx.stroke();
+      }
+      for(let l=0;l<S.rows;l++){
+        const g = ctx.createLinearGradient(geo.ox, 0, W, 0);
+        g.addColorStop(0,'rgba(150,170,255,0.00)');
+        g.addColorStop(0.12,'rgba(150,170,255,0.28)');
+        g.addColorStop(1,'rgba(150,170,255,0.10)');
+        ctx.strokeStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(geo.ox + geo.cell*0.5, rowY[l]);
+        ctx.lineTo(geo.ox + geo.cell*(S.cols+1), rowY[l]);
+        ctx.stroke();
+      }
+    }
+
+    // curvas
+    ctx.font = Math.max(9, r*0.22) + 'px system-ui';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    for(let l=0;l<S.rows;l++){
+      for(let c=0;c<S.cols;c++){
+        const a=c+1, b=l+1;
+        const x0=geo.cx(c), y0=geo.cy(l);
+        drawCurve(a,b,x0,y0,r,uNow,totalU);
+        if(S.dots || S.cross){
+          const p = curvePoint(a,b,uNow);
+          const px = x0+p[0]*r, py = y0+p[1]*r;
+          if(S.dots){
+            const dr = Math.max(2.5, r*0.09);
+            const g = ctx.createRadialGradient(px,py,0,px,py,dr*2.6);
+            g.addColorStop(0,TEMA.dotGlowInner);
+            g.addColorStop(1,'rgba(255,255,255,0)');
+            ctx.fillStyle=g;
+            ctx.beginPath(); ctx.arc(px,py,dr*2.6,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle=TEMA.dot;
+            ctx.beginPath(); ctx.arc(px,py,dr,0,Math.PI*2); ctx.fill();
+          }
+        }
+        if(S.labels){
+          ctx.fillStyle='rgba(150,160,220,0.55)';
+          ctx.fillText(a+':'+b, x0-r, y0-r-2);
+        }
+      }
+    }
+  }
+
+  // ---------------- som ----------------
+  // Vibração contínua: drone grave com "respiração" lenta por LFO.
+  // Sem eventos periódicos — tudo é modulação contínua.
+  const Sound = (function(){
+    let ac=null, master=null;
+
+    function build(){
+      ac = new (window.AudioContext||window.webkitAudioContext)();
+      master = ac.createGain();
+      master.gain.value = 0;
+      master.connect(ac.destination);
+
+      // drone: dois serrote desafinados + oitava, por passa-baixa
+      const lp = ac.createBiquadFilter();
+      lp.type='lowpass'; lp.frequency.value=300; lp.Q.value=0.8;
+      lp.connect(master);
+      [[55,'sawtooth',0.045],[55.6,'sawtooth',0.045],[110.3,'sine',0.07]].forEach(([f,tp,g0])=>{
+        const o=ac.createOscillator(); o.type=tp; o.frequency.value=f;
+        const g=ac.createGain(); g.gain.value=g0;
+        o.connect(g); g.connect(lp); o.start();
+      });
+
+      // sub contínuo com respiração lenta (LFO no ganho)
+      const sub=ac.createOscillator(); sub.type='sine'; sub.frequency.value=41.2;
+      const subGain=ac.createGain(); subGain.gain.value=0.14;
+      sub.connect(subGain); subGain.connect(master); sub.start();
+      const lfo=ac.createOscillator(); lfo.type='sine'; lfo.frequency.value=0.12;
+      const lfoAmt=ac.createGain(); lfoAmt.gain.value=0.11;
+      lfo.connect(lfoAmt); lfoAmt.connect(subGain.gain); lfo.start();
+
+      // movimento lento do filtro do drone (a "onda" da vibração)
+      const lfo2=ac.createOscillator(); lfo2.type='sine'; lfo2.frequency.value=0.05;
+      const lfo2Amt=ac.createGain(); lfo2Amt.gain.value=120;
+      lfo2.connect(lfo2Amt); lfo2Amt.connect(lp.frequency); lfo2.start();
+    }
+
+    function start(){
+      if(!ac) build();
+      ac.resume();
+      const t=ac.currentTime;
+      master.gain.cancelScheduledValues(t);
+      master.gain.setValueAtTime(master.gain.value,t);
+      master.gain.linearRampToValueAtTime(0.7,t+1.5);   // fade-in
+    }
+
+    function stop(){
+      if(!ac) return;
+      const t=ac.currentTime;
+      master.gain.cancelScheduledValues(t);
+      master.gain.setValueAtTime(master.gain.value,t);
+      master.gain.linearRampToValueAtTime(0.0,t+0.6);    // fade-out
+      setTimeout(()=>{ if(ac && master.gain.value<0.01) ac.suspend(); }, 800);
+    }
+
+    return {start, stop};
+  })();
+
+  // ---------------- controles ----------------
+  const $ = id => document.getElementById(id);
+  function bindRange(id, out, fmt, apply){
+    $(id).addEventListener('input', e=>{
+      const v = +e.target.value;
+      $(out).textContent = fmt(v);
+      apply(v);
+    });
+  }
+  bindRange('cols','vCols', v=>v, v=>{S.cols=v; computeGeo();});
+  bindRange('rows','vRows', v=>v, v=>{S.rows=v; computeGeo();});
+  bindRange('speed','vSpeed', v=>(v/100).toFixed(1)+'×', v=>{S.speed=v/100;});
+  bindRange('phase','vPhase', v=>v+'°', v=>{S.phase=v*Math.PI/180;});
+  $('cross').addEventListener('change', e=>S.cross=e.target.checked);
+  const phaseSlider = $('phase'), phaseLabel = $('vPhase');
+  $('phaseAuto').addEventListener('change', e=>S.phaseAuto=e.target.checked);
+  $('dots').addEventListener('change', e=>S.dots=e.target.checked);
+  $('trail').addEventListener('change', e=>{
+    S.trail = e.target.checked;
+    $('trailOpts').style.display = S.trail ? 'block' : 'none';
+  });
+  bindRange('tlen','vLen', v=>v+'%', v=>{S.trailLen=v/100;});
+  $('clearCycle').addEventListener('change', e=>S.clearCycle=e.target.checked);
+  $('labels').addEventListener('change', e=>S.labels=e.target.checked);
+  $('sound').addEventListener('change', e=>{ e.target.checked ? Sound.start() : Sound.stop(); });
+  $('pause').addEventListener('click', ()=>{
+    S.paused=!S.paused;
+    $('pause').textContent = S.paused ? '▶ Continuar' : '⏸ Pausar';
+  });
+  $('reset').addEventListener('click', ()=>{S.t=0;});
+  $('toggleBtn').addEventListener('click', ()=>{
+    $('panel').classList.toggle('hidden');
+  });
+
+  // ---------------- tema claro/escuro (sincronizado com o Portal) ----------------
+  (function initTema(){
+    const root = document.documentElement;
+    const btn = $('temaBtn');
+    function aplicar(t){
+      root.setAttribute('data-theme', t);
+      aplicarTemaCanvas(t === 'dark');
+      btn.textContent = (t === 'dark') ? '🌙' : '☀️';
+    }
+    aplicar(root.getAttribute('data-theme') || 'dark');
+    btn.addEventListener('click', ()=>{
+      const novo = (root.getAttribute('data-theme') === 'dark') ? 'light' : 'dark';
+      aplicar(novo);
+      try{ localStorage.setItem('portal-tema', novo); }catch(e){}
+    });
+  })();
+  // no celular, começa recolhido
+  if(window.innerWidth < 640) $('panel').classList.add('hidden');
+
+  // toque em uma curva → foco; toque novamente → volta à matriz
+  cv.addEventListener('pointerdown', e=>{
+    if(S.focusOn){ S.focusOn = false; return; }
+    const c = Math.floor((e.clientX - geo.ox)/geo.cell) - 1;
+    const l = Math.floor((e.clientY - geo.oy)/geo.cell) - 1;
+    if(c>=0 && c<S.cols && l>=0 && l<S.rows){
+      S.focusCell = {c, l};
+      S.focusOn = true;
+    }
+  });
+
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(t=>{last=t; requestAnimationFrame(frame);});
+})();
+</script>
+</body>
+</html>
