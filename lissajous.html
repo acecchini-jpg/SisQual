@@ -136,7 +136,7 @@
   </div>
 </div>
 <div id="topBar">
-  <a class="sqBtn" href="index.html" title="Voltar ao portal Röchling">⤺</a>
+  <button class="sqBtn" onclick="fecharOuVoltarPortal()" title="Fechar aba (ou voltar ao portal)">✕</button>
   <button class="sqBtn" id="temaBtn" title="Alternar tema claro/escuro">🌙</button>
 </div>
 <button id="toggleBtn" title="Controles">☰</button>
@@ -594,6 +594,15 @@
   resize();
   requestAnimationFrame(t=>{last=t; requestAnimationFrame(frame);});
 })();
+</script>
+
+<script>
+/* Fecha esta aba (aberta via easter egg); se o navegador bloquear
+   por não ter sido aberta por script, volta ao portal como alternativa. */
+function fecharOuVoltarPortal(){
+  window.close();
+  setTimeout(function(){ window.location.href = 'index.html'; }, 300);
+}
 </script>
 </body>
 </html>

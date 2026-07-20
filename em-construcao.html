@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Action Plan — Em construção</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%231563AE'/><circle cx='17' cy='33' r='5.5' fill='white'/><circle cx='32' cy='22' r='7' fill='white'/><circle cx='47' cy='33' r='5.5' fill='white'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -41,7 +42,6 @@
     transition:background .35s ease, color .35s ease;
   }
 
-  /* Fundo estilo "planta baixa" (blueprint) */
   body::before{
     content:""; position:fixed; inset:0; z-index:0;
     background-image:
@@ -66,7 +66,6 @@
 
   .stage{ position:relative; z-index:1; text-align:center; max-width:560px; }
 
-  /* Arco de três pontos da Röchling — pulsando */
   .dot-arc{
     display:flex; justify-content:center; align-items:flex-end; gap:16px;
     height:30px; margin-bottom:30px;
@@ -83,7 +82,6 @@
     50%    { transform:scale(.55); opacity:.45;}
   }
 
-  /* Engrenagens girando */
   .gears{ display:flex; justify-content:center; align-items:center; margin-bottom:26px; color:var(--accent); }
   .gears svg{ display:block; }
   .gear-a{ width:74px; height:74px; animation:spin 9s linear infinite; }
@@ -114,7 +112,6 @@
     50% { content:'..'; } 75% { content:'...'; }
   }
 
-  /* Barra de progresso listrada, indeterminada */
   .progress{
     margin:32px auto 0; max-width:380px; height:12px;
     border-radius:999px; border:1px solid var(--line);
@@ -143,8 +140,8 @@
     display:inline-flex; align-items:center; gap:8px;
     margin-top:38px; padding:12px 22px;
     background:var(--accent); color:#fff;
-    border-radius:12px; text-decoration:none;
-    font-size:14.5px; font-weight:600;
+    border:none; border-radius:12px; text-decoration:none;
+    font-family:inherit; font-size:14.5px; font-weight:600; cursor:pointer;
     box-shadow:0 8px 24px rgba(21,99,174,.28);
     transition:transform .2s ease, box-shadow .2s ease;
   }
@@ -186,10 +183,10 @@
   </div>
   <div class="status">STATUS: EM DESENVOLVIMENTO</div>
 
-  <a class="back" href="index.html">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-    Voltar ao portal
-  </a>
+  <button class="back" onclick="fecharOuVoltarPortal()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    Fechar aba
+  </button>
 </div>
 
 <footer>Röchling · Portal interno de sistemas</footer>
@@ -204,7 +201,7 @@
     try { return localStorage.getItem('portal-tema'); } catch(e){ return null; }
   }
   function salvar(t){
-    try { localStorage.setItem('portal-tema', t); } catch(e){ /* segue sem persistir */ }
+    try { localStorage.setItem('portal-tema', t); } catch(e){}
   }
   function aplicar(t){
     root.setAttribute('data-theme', t);
@@ -221,6 +218,15 @@
     salvar(novo);
   });
 })();
+</script>
+
+<script>
+/* Fecha esta aba (aberta via easter egg); se o navegador bloquear
+   por não ter sido aberta por script, volta ao portal como alternativa. */
+function fecharOuVoltarPortal(){
+  window.close();
+  setTimeout(function(){ window.location.href = 'index.html'; }, 300);
+}
 </script>
 </body>
 </html>

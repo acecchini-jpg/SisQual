@@ -197,9 +197,9 @@
       <p class="mono text-[11px] text-[var(--text-dim)] mt-1 tracking-wider">MOTOR DE DECISÃO MINIMAX &middot; INTELIGÊNCIA EXPLICÁVEL (XAI) &middot; IMBATÍVEL</p>
     </div>
     <div class="flex items-center gap-2">
-      <a href="index.html" class="mono text-xs px-3 py-2 rounded-lg btn-choice flex items-center gap-2" title="Voltar ao portal Röchling">
-        ⤺ <span>PORTAL</span>
-      </a>
+      <button onclick="fecharOuVoltarPortal()" class="mono text-xs px-3 py-2 rounded-lg btn-choice flex items-center gap-2" title="Fechar aba (ou voltar ao portal)">
+        ✕ <span>FECHAR</span>
+      </button>
       <button id="themeToggleGame" class="mono text-xs px-3 py-2 rounded-lg btn-choice flex items-center gap-2" title="Alternar tema claro/escuro">
         <span id="themeIconGame">☀️</span> <span id="themeLabelGame">CLARO</span>
       </button>
@@ -734,6 +734,15 @@
     try { localStorage.setItem('portal-tema', novo); } catch(e){ /* segue sem persistir */ }
   });
 })();
+</script>
+
+<script>
+/* Fecha esta aba (aberta via easter egg); se o navegador bloquear
+   por não ter sido aberta por script, volta ao portal como alternativa. */
+function fecharOuVoltarPortal(){
+  window.close();
+  setTimeout(function(){ window.location.href = 'index.html'; }, 300);
+}
 </script>
 </body>
 </html>
