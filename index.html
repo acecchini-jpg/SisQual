@@ -386,23 +386,21 @@ const ICONES = {
   });
 })();
 
-/* Easter egg: shift+click (desktop) ou toque longo (celular) nos três pontinhos do hero,
-   ou no copyright do rodapé, abre o Lissajous */
-(function easterEggLissajous(){
-  function abrirLissajous(){
-    window.open('lissajous.html', '_blank', 'noopener');
-  }
-  const dots = document.getElementById('dotArcEgg');
-  const copy = document.getElementById('copyEgg');
-  [dots, copy].forEach(function(el){
+/* Easter eggs: shift+click (desktop) ou toque longo (celular) —
+   nos três pontinhos do hero abre o Lissajous; no copyright do rodapé abre a Torre de Hanói */
+(function easterEggsOciosos(){
+  function ligar(el, arquivo){
     if (!el) return;
+    function abrir(){ window.open(arquivo, '_blank', 'noopener'); }
     el.addEventListener('click', function(e){
       if (!e.shiftKey) return;
       e.preventDefault();
-      abrirLissajous();
+      abrir();
     });
-    attachLongPress(el, abrirLissajous);
-  });
+    attachLongPress(el, abrir);
+  }
+  ligar(document.getElementById('dotArcEgg'), 'lissajous.html');
+  ligar(document.getElementById('copyEgg'), 'hanoi.html');
 })();
 
 /* ===== Tema claro / escuro =====
