@@ -76,6 +76,26 @@
   #povHud.show{ opacity:1; transform:translateX(-50%) translateY(0); }
   #povHud b{ color:var(--accent); }
 
+  /* ===== Modo voo: os 4 cards viram mostradores de HUD, 2 de cada lado ===== */
+  body.modo-voo .grid{
+    position:fixed; inset:0; display:block; padding:0; max-width:none;
+    margin:0; overflow:visible; z-index:2; pointer-events:none;
+  }
+  body.modo-voo .card{
+    position:absolute; width:172px; flex:none;
+    padding:10px 12px; border-radius:10px; gap:5px;
+    pointer-events:auto;
+  }
+  body.modo-voo .card .desc, body.modo-voo .card .mini-arc{ display:none; }
+  body.modo-voo .card-icon{ width:24px; height:24px; border-radius:7px; }
+  body.modo-voo .card h2{ font-size:12.5px; }
+  body.modo-voo .tag{ font-size:9px; padding:1px 5px; }
+  body.modo-voo .card .open{ font-size:10.5px; }
+  body.modo-voo .card:nth-of-type(1){ left:14px; top:76px; }
+  body.modo-voo .card:nth-of-type(2){ left:14px; top:168px; }
+  body.modo-voo .card:nth-of-type(3){ left:calc(100vw - 186px); top:76px; }
+  body.modo-voo .card:nth-of-type(4){ left:calc(100vw - 186px); top:168px; }
+
   /* ===== Header (compacto) ===== */
   header{
     flex:0 0 auto;
@@ -518,6 +538,65 @@ const ICONES = {
     globe.add(new THREE.LineSegments(g, coastMat));
   })();
 
+  /* --- Preenchimento dos continentes -----------------------------------
+     Textura equirretangular gerada em canvas (cada polígono do COAST vira
+     um caminho preenchido), aplicada numa malha construída com a MESMA
+     função ll2xyz das linhas acima — garante alinhamento exato entre o
+     contorno (linha) e o preenchimento (textura), sem depender do UV
+     padrão de uma SphereGeometry genérica. --- */
+  function gerarTexturaContinentes(corPreenchimento){
+    const W = 2048, H = 1024;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const cx = cv.getContext('2d');
+    cx.clearRect(0, 0, W, H);
+    cx.fillStyle = corPreenchimento;
+    COAST.forEach(function(linha){
+      cx.beginPath();
+      let lastX = null;
+      for (let k = 0; k < linha.length; k += 2){
+        const lon = linha[k] / 100, lat = linha[k+1] / 100;
+        const x = (lon + 180) / 360 * W;
+        const y = (90 - lat) / 180 * H;
+        if (lastX === null || Math.abs(x - lastX) > W * 0.5){
+          cx.moveTo(x, y); // evita risco horizontal ao cruzar a costura em ±180°
+        } else {
+          cx.lineTo(x, y);
+        }
+        lastX = x;
+      }
+      cx.closePath();
+      cx.fill();
+    });
+    return cv;
+  }
+
+  const texturaContinentes = new THREE.CanvasTexture(gerarTexturaContinentes('rgba(77,155,232,0.22)'));
+  (function(){
+    const segLon = 96, segLat = 48, positions = [], uvs = [], indices = [];
+    for (let j = 0; j <= segLat; j++){
+      const lat = 90 - (j / segLat) * 180;
+      for (let i = 0; i <= segLon; i++){
+        const lon = -180 + (i / segLon) * 360;
+        const p = ll2xyz(lon, lat, R * 0.999); // logo abaixo das linhas (1.001), acima da gratícula (0.998)
+        positions.push(p[0], p[1], p[2]);
+        uvs.push(i / segLon, 1 - j / segLat); // V invertido: corrige a orientação da textura de cima para baixo
+      }
+    }
+    for (let j = 0; j < segLat; j++){
+      for (let i = 0; i < segLon; i++){
+        const a = j*(segLon+1)+i, b = a+1, c = a+segLon+1, d = c+1;
+        indices.push(a, c, b,  b, c, d);
+      }
+    }
+    const gPreench = new THREE.BufferGeometry();
+    gPreench.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    gPreench.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    gPreench.setIndex(indices);
+    const matPreench = new THREE.MeshBasicMaterial({ map:texturaContinentes, transparent:true, depthWrite:false });
+    globe.add(new THREE.Mesh(gPreench, matPreench));
+  })();
+
   /* --- Gratícula (meridianos/paralelos, bem sutil) --- */
   const gratMat = new THREE.LineBasicMaterial({
     color:0x1563AE, transparent:true, opacity:0.12, depthWrite:false
@@ -643,6 +722,10 @@ const ICONES = {
     const corRotuloCidades = escuro ? '#A8B4C4' : '#6B7A8C';
     marcadoresEstaticosMat.forEach(m => m.color.setHex(corCidades));
     rotulosEstaticos.forEach(desenhar => desenhar(corRotuloCidades));
+    const corPreench = escuro ? 'rgba(77,155,232,0.22)' : 'rgba(21,99,174,0.16)';
+    const canvasPreench = gerarTexturaContinentes(corPreench);
+    texturaContinentes.image = canvasPreench;
+    texturaContinentes.needsUpdate = true;
     if (reduceMotion) renderer.render(scene, camera);      // re-renderiza o quadro estático
   };
 
@@ -843,6 +926,7 @@ const ICONES = {
 
     camera.fov = FOV_POV;
     camera.updateProjectionMatrix();
+    document.body.classList.add('modo-voo');
     document.getElementById('povHud').classList.add('show');
   }
 
@@ -861,6 +945,7 @@ const ICONES = {
     avionGroup.scale.set(1, 1, 1);
 
     resize(); // resincroniza tamanho do renderizador e proporção da câmera com a janela atual
+    document.body.classList.remove('modo-voo');
     document.getElementById('povHud').classList.remove('show');
   }
 
