@@ -835,10 +835,10 @@ const ICONES = {
 
     // o avião passa a ser filho da câmera: fica sempre no mesmo lugar da tela, "estacionário"
     camera.add(avionGroup);
-    avionGroup.position.set(0, -0.14, -0.5);
-    avionGroup.scale.set(1.6, 1.6, 1.6);
+    avionGroup.position.set(0, -0.16, -0.35);
+    avionGroup.scale.set(3.0, 3.0, 3.0);
     avionGroup.rotation.set(0, Math.PI, 0);   // nariz apontando para dentro da tela (-Z da câmera)
-    avionGroup.rotateX(-0.32);                // inclina o nariz p/ baixo: expõe o topo das asas p/ câmera (vista de trás/cima)
+    avionGroup.rotateX(-0.4);                 // inclina o nariz p/ baixo: expõe o topo das asas p/ câmera (vista de trás/cima)
     avionQuatBase = avionGroup.quaternion.clone(); // guarda essa pose-base p/ somar a inclinação de curva depois
 
     camera.fov = FOV_POV;
@@ -889,8 +889,8 @@ const ICONES = {
     // A/D mudam o RUMO do avião: giram o globo no eixo vertical que passa por ele (o terreno gira em volta),
     // sem alterar o avanço — com inclinação visual de curva
     let alvoInclinacao = 0;
-    if (povTeclas.a){ globe.rotateOnWorldAxis(EIXO_RUMO,  VELOCIDADE_GIRO_DIRECAO * dt); alvoInclinacao = 0.45; }
-    if (povTeclas.d){ globe.rotateOnWorldAxis(EIXO_RUMO, -VELOCIDADE_GIRO_DIRECAO * dt); alvoInclinacao = -0.45; }
+    if (povTeclas.a){ globe.rotateOnWorldAxis(EIXO_RUMO, -VELOCIDADE_GIRO_DIRECAO * dt); alvoInclinacao = 0.45; }
+    if (povTeclas.d){ globe.rotateOnWorldAxis(EIXO_RUMO,  VELOCIDADE_GIRO_DIRECAO * dt); alvoInclinacao = -0.45; }
     inclinacaoAsa = THREE.MathUtils.lerp(inclinacaoAsa, alvoInclinacao, Math.min(1, dt*4));
     if (avionQuatBase){
       QUAT_BANK.setFromAxisAngle(EIXO_Z, inclinacaoAsa);
