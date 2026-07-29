@@ -301,7 +301,7 @@
 
 <canvas id="bg-globe" aria-hidden="true"></canvas>
 <div id="povHud" aria-hidden="true">
-  ✈️ <b>WASD</b> pilota · <b>+/-</b> velocidade · Altitude: <span id="povAltVal">50%</span> · Velocidade: <span id="povVelVal">50%</span>
+  ✈️ <b>WASD</b> pilota · <b>+/-</b> velocidade · <b>▲▼◀▶</b> olhar · Altitude: <span id="povAltVal">50%</span> · Velocidade: <span id="povVelVal">50%</span>
 </div>
 <svg id="povAviao" aria-hidden="true" viewBox="0 0 100 80">
   <path d="M50 6 L54 52 L59 70 L50 65 L41 70 L46 52 Z" fill="#FF9E1B"/>
@@ -801,7 +801,7 @@ const ICONES = {
   // Esfera invisível, maior que os detalhes do avião — só para facilitar o clique/toque nele
   // DEBUG TEMPORÁRIO: opacity:0.35 deixa essa esfera visível (bolha ciano) para você enxergar
   // a área de clique e testar. Depois de confirmar que está boa, troque para opacity:0 de novo.
-  const avionHitMat = new THREE.MeshBasicMaterial({ color:0x00e5ff, transparent:true, opacity:0.35, depthWrite:false, depthTest:false });
+  const avionHitMat = new THREE.MeshBasicMaterial({ color:0x00e5ff, transparent:true, opacity:0, depthWrite:false, depthTest:false });
   const avionHit = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 12), avionHitMat); // raio bem maior que antes (era 0.045)
   avionGroup.add(avionHit);
 
@@ -926,10 +926,13 @@ const ICONES = {
   let povAtivo = false;
   let quedaEmAndamento = false;
   let povAltura = 0, rotYSalva = 0, velocidadeAtual = 0, inclinacaoAsa = 0;
+  let panYaw = 0, panPitch = 0; // olhar livre (setas): gira a câmera sem mudar a rota
   const povTeclas = { w:false, a:false, s:false, d:false, mais:false, menos:false };
-  const ALTURA_MIN = R * 0.008, ALTURA_MAX = R * 0.09, ALTURA_INICIAL = R * 0.035;
-  const VELOCIDADE_GIRO_DIRECAO = 0.6, VELOCIDADE_ALTITUDE = 0.03 * R;
-  const VEL_MIN = 0.025, VEL_MAX = 0.35, VEL_INICIAL = 0.16, VEL_AJUSTE = 0.18, VEL_ESTOL = 0.06;
+  const povSetas = { esquerda:false, direita:false, cima:false, baixo:false };
+  const ALTURA_MIN = R * 0.008, ALTURA_MAX = R * 0.45, ALTURA_INICIAL = R * 0.035;
+  const VELOCIDADE_GIRO_DIRECAO = 0.6, VELOCIDADE_ALTITUDE = 0.03 * R, VELOCIDADE_OLHAR = 1.3;
+  const PAN_PITCH_MAX = THREE.MathUtils.degToRad(55), PAN_PITCH_MIN = -THREE.MathUtils.degToRad(75);
+  const VEL_MIN = 0.025, VEL_MAX = 0.35, VEL_INICIAL = 0.074, VEL_AJUSTE = 0.18, VEL_ESTOL = 0.06;
   const TAXA_QUEDA_ESTOL = 0.018 * R; // abaixo da velocidade mínima segura, perde altitude sozinho
   const INCLINACAO_BAIXO = THREE.MathUtils.degToRad(22); // câmera olha um pouco para baixo, mostrando mais chão que céu
 
@@ -944,6 +947,7 @@ const ICONES = {
     povAltura = ALTURA_INICIAL;
     velocidadeAtual = VEL_INICIAL;
     inclinacaoAsa = 0;
+    panYaw = 0; panPitch = 0; // sempre começa olhando para frente
     rotYSalva = globe.rotation.y; // pra restaurar a rotação ambiente exatamente de onde parou
 
     // o avião 3D some da rota normal; no lugar dele, um ícone 2D fixo por cima da cena
@@ -960,6 +964,7 @@ const ICONES = {
   function sairDoPOV(){
     povAtivo = false;
     povTeclas.w = povTeclas.a = povTeclas.s = povTeclas.d = povTeclas.mais = povTeclas.menos = false;
+    povSetas.esquerda = povSetas.direita = povSetas.cima = povSetas.baixo = false;
     camera.fov = FOV_NORMAL;
     camera.rotation.set(0, 0, 0);
     camera.position.set(0, 0, 4.0);
@@ -981,12 +986,20 @@ const ICONES = {
     if (e.key === 'Escape'){ sairDoPOV(); return; } // saída de emergência, sem precisar de F5
     if (e.key === '+' || e.key === '='){ povTeclas.mais = true; return; }
     if (e.key === '-' || e.key === '_'){ povTeclas.menos = true; return; }
+    if (e.key === 'ArrowLeft'){  povSetas.esquerda = true; e.preventDefault(); return; }
+    if (e.key === 'ArrowRight'){ povSetas.direita  = true; e.preventDefault(); return; }
+    if (e.key === 'ArrowUp'){    povSetas.cima     = true; e.preventDefault(); return; }
+    if (e.key === 'ArrowDown'){  povSetas.baixo    = true; e.preventDefault(); return; }
     const k = e.key.toLowerCase();
     if (k in povTeclas) povTeclas[k] = true;
   });
   window.addEventListener('keyup', function(e){
     if (e.key === '+' || e.key === '='){ povTeclas.mais = false; return; }
     if (e.key === '-' || e.key === '_'){ povTeclas.menos = false; return; }
+    if (e.key === 'ArrowLeft'){  povSetas.esquerda = false; return; }
+    if (e.key === 'ArrowRight'){ povSetas.direita  = false; return; }
+    if (e.key === 'ArrowUp'){    povSetas.cima     = false; return; }
+    if (e.key === 'ArrowDown'){  povSetas.baixo    = false; return; }
     const k = e.key.toLowerCase();
     if (k in povTeclas) povTeclas[k] = false;
   });
@@ -1016,9 +1029,15 @@ const ICONES = {
     if (povTeclas.s) povAltura = Math.max(ALTURA_MIN, povAltura - VELOCIDADE_ALTITUDE*dt);
     if (velocidadeAtual < VEL_ESTOL) povAltura = Math.max(ALTURA_MIN, povAltura - TAXA_QUEDA_ESTOL*dt); // estol: devagar demais, cai
 
+    // setas: olhar livre (não muda a rota, só para onde a câmera aponta)
+    if (povSetas.esquerda) panYaw += VELOCIDADE_OLHAR * dt;
+    if (povSetas.direita)  panYaw -= VELOCIDADE_OLHAR * dt;
+    if (povSetas.cima)  panPitch = Math.min(PAN_PITCH_MAX, panPitch + VELOCIDADE_OLHAR*dt);
+    if (povSetas.baixo) panPitch = Math.max(PAN_PITCH_MIN, panPitch - VELOCIDADE_OLHAR*dt);
+
     // câmera sentada logo acima do "polo" do globo (nunca olha para o centro — olha para o lado, tangente)
     camera.position.set(pivot.position.x, R + povAltura, 0);
-    camera.rotation.set(-INCLINACAO_BAIXO, 0, 0); // orientação fixa: para frente (-Z), levemente inclinada para baixo
+    camera.rotation.set(-INCLINACAO_BAIXO + panPitch, panYaw, 0); // inclinação padrão + olhar livre das setas
 
     const altPct = (povAltura - ALTURA_MIN) / (ALTURA_MAX - ALTURA_MIN);
     const velPct = (velocidadeAtual - VEL_MIN) / (VEL_MAX - VEL_MIN);
