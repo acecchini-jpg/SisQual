@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<script>
+/* Aplica o tema salvo pelo portal (mesma chave: portal-tema) antes da pintura da página */
+(function(){
+  try{
+    var t = localStorage.getItem('portal-tema');
+    if(!t){ t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; }
+    document.documentElement.setAttribute('data-theme', t);
+  }catch(e){ document.documentElement.setAttribute('data-theme','dark'); }
+})();
+</script>
+<title>Arcade Pong — Röchling</title>
+<style>
+  :root{
+    --bg:#05060a;
+    --panel:#0d1119;
+    --panel2:#131a26;
+    --line:#1c2431;
+    --cyan:#3ce6ff;
+    --magenta:#ff2ee6;
+    --amber:#ffb020;
+    --green:#37e08a;
+    --text:#dfe8ef;
+    --muted:#7c8aa0;
+    --danger:#ff3b56;
+    --gold:#ffd35c;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; padding:0; height:100%; overflow:hidden;
+    background:radial-gradient(ellipse at 50% 0%, #10141d 0%, #05060a 60%, #020204 100%);
+    font-family:'Segoe UI', system-ui, -apple-system, sans-serif;
+    color:var(--text); user-select:none;
+  }
+  #app{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  #stage{ position:relative; display:flex; align-items:center; justify-content:center; width:100%; height:100%; }
+  canvas#game{
+    background:#000;
+    box-shadow:0 0 0 1px var(--line), 0 0 60px rgba(60,230,255,.08), 0 30px 80px rgba(0,0,0,.7);
+    border-radius:8px; max-width:100%; max-height:100%; touch-action:none;
+  }
+
+  #hud{
+    position:absolute; top:14px; left:0; right:0;
+    display:flex; justify-content:center; align-items:flex-start; gap:48px;
+    pointer-events:none; z-index:6;
+  }
+  #hud .score{
+    font-family:'Courier New', monospace; font-weight:800; font-size:clamp(26px,5vw,44px);
+    letter-spacing:4px; text-shadow:0 0 18px currentColor, 0 0 4px currentColor;
+  }
+  #hud .score.p1{ color:var(--cyan); }
+  #hud .score.p2{ color:var(--magenta); }
+  #hud .label{
+    font-family:'Courier New', monospace; font-size:10px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--muted); text-align:center; margin-bottom:2px;
+  }
+  #modeTag{
+    position:absolute; top:16px; left:50%; transform:translateX(-50%);
+    font-family:'Courier New', monospace; font-size:10.5px; letter-spacing:3px; text-transform:uppercase;
+    color:var(--muted); z-index:6; pointer-events:none; opacity:.75;
+  }
+  #serveMsg, #flashMsg{
+    position:absolute; top:38%; left:50%; transform:translate(-50%,-50%);
+    font-family:'Courier New', monospace; font-weight:800; letter-spacing:3px; text-transform:uppercase;
+    font-size:clamp(18px,4vw,30px); color:#fff; text-shadow:0 0 20px currentColor; z-index:7;
+    pointer-events:none; opacity:0; transition:opacity .2s;
+  }
+  #serveMsg.show, #flashMsg.show{ opacity:1; }
+
+  /* ---------------- telas ---------------- */
+  .screen{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column;
+    text-align:center; background:radial-gradient(ellipse at 50% 30%, rgba(20,26,38,0.97), rgba(2,3,6,0.99));
+    padding:24px; gap:10px; z-index:20; border-radius:8px;
+  }
+  .hidden{ display:none !important; }
+  .titleWord{
+    font-family:'Courier New', monospace; font-size:34px; font-weight:800; letter-spacing:6px;
+    background:linear-gradient(180deg, var(--cyan), var(--magenta) 90%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 0 40px rgba(60,230,255,.3); margin:0 0 2px;
+  }
+  .subTitle{ font-size:12px; letter-spacing:3px; color:var(--muted); text-transform:uppercase; margin-bottom:10px; }
+  .miniText{ font-size:12.5px; color:var(--muted); max-width:340px; line-height:1.6; margin:0 0 6px; }
+
+  .opGroup{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; max-width:380px; margin:6px 0; }
+  .opBtn{
+    background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:9px 16px; border-radius:9px; font-size:13px; font-weight:600; cursor:pointer;
+    transition:all .15s ease; font-family:inherit;
+  }
+  .opBtn:hover{ border-color:var(--cyan); }
+  .opBtn.active{ background:var(--cyan); color:#00131a; border-color:var(--cyan); box-shadow:0 0 16px rgba(60,230,255,.5); }
+  .opBtn.active.magenta{ background:var(--magenta); color:#1a0016; box-shadow:0 0 16px rgba(255,46,230,.5); }
+  .opLabel{ font-size:10.5px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-top:10px; }
+
+  .bigBtn{
+    margin-top:14px; padding:13px 34px; border-radius:11px; border:none; cursor:pointer;
+    background:linear-gradient(135deg, var(--cyan), #1fa8c9); color:#001820;
+    font-size:15px; font-weight:800; letter-spacing:1px; font-family:inherit;
+    box-shadow:0 8px 24px rgba(60,230,255,.35); transition:transform .15s ease;
+  }
+  .bigBtn:hover{ transform:translateY(-2px); }
+  .bigBtn.ghost{
+    background:transparent; border:1px solid var(--line); color:var(--text);
+    box-shadow:none; font-weight:600; padding:10px 24px;
+  }
+  .statsRow{ display:flex; gap:18px; margin:10px 0; }
+  .statBox .num{ font-family:'Courier New',monospace; font-size:30px; font-weight:800; color:var(--gold); }
+  .statBox .lab{ font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+
+  /* ---------------- barra Portal ---------------- */
+  .portalBar{ position:fixed; top:12px; right:12px; z-index:9999; display:flex; gap:7px; }
+  .portalBtn{
+    display:flex; align-items:center; gap:6px; font-family:inherit; font-size:11px; font-weight:600;
+    letter-spacing:.03em; text-transform:uppercase; text-decoration:none; cursor:pointer;
+    padding:7px 11px; border-radius:8px; border:1px solid rgba(124,138,160,.35);
+    background:rgba(6,9,14,0.68); color:#9fb0c6; backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px); transition:all .2s ease; white-space:nowrap;
+  }
+  .portalBtn:hover{ color:#fff; border-color:#7c8aa0; }
+  html[data-theme="light"] .portalBtn{ background:rgba(255,255,255,0.82); color:#4A5B6E; border-color:rgba(21,99,174,.28); }
+  html[data-theme="light"] .portalBtn:hover{ color:#1563AE; border-color:#1563AE; }
+  @media (max-width:480px){ .portalBtn span.portalTxt{ display:none; } }
+  html[data-theme="light"] html, html[data-theme="light"] body{
+    background:radial-gradient(ellipse at 50% 0%, #eef3fa 0%, #dce8f5 55%, #cfe0f0 100%) !important;
+  }
+
+  /* ---------------- hambúrguer + gaveta de config ---------------- */
+  #hamburgerBtn{
+    position:fixed; top:12px; left:12px; z-index:9999;
+    width:38px; height:38px; border-radius:9px; border:1px solid rgba(124,138,160,.35);
+    background:rgba(6,9,14,0.68); color:#cdd8e6; backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer;
+  }
+  html[data-theme="light"] #hamburgerBtn{ background:rgba(255,255,255,0.82); color:#4A5B6E; border-color:rgba(21,99,174,.28); }
+  #overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:9990; opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  #overlay.show{ opacity:1; pointer-events:auto; }
+  #drawer{
+    position:fixed; top:0; left:0; bottom:0; width:270px; max-width:82vw; z-index:9995;
+    background:var(--panel); border-right:1px solid var(--line);
+    padding:20px 18px; transform:translateX(-100%); transition:transform .25s ease;
+    overflow-y:auto;
+  }
+  #drawer.show{ transform:translateX(0); }
+  #drawer h3{ font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--cyan); margin:18px 0 8px; }
+  #drawer h3:first-of-type{ margin-top:2px; }
+  #drawerCloseBtn{ position:absolute; top:12px; right:12px; width:30px; height:30px; border-radius:8px;
+    background:var(--panel2); border:1px solid var(--line); color:var(--text); display:flex;
+    align-items:center; justify-content:center; cursor:pointer; }
+  .drawerBtnRow{ display:flex; flex-direction:column; gap:6px; }
+  .drawerBtn{
+    background:var(--panel2); border:1px solid var(--line); color:var(--text); text-align:left;
+    padding:9px 12px; border-radius:8px; font-size:13px; cursor:pointer; font-family:inherit;
+  }
+  .drawerBtn.active{ border-color:var(--cyan); color:var(--cyan); background:rgba(60,230,255,.08); }
+  .drawerNote{ font-size:10.5px; color:var(--muted); line-height:1.5; margin-top:6px; }
+  .drawerAction{
+    width:100%; margin-top:8px; padding:9px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--text); cursor:pointer; font-size:13px; font-family:inherit;
+  }
+  .drawerAction:hover{ border-color:var(--cyan); }
+  .chk{ display:flex; align-items:center; gap:8px; font-size:13px; margin:6px 0; cursor:pointer; }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+</style>
+</head>
+<body>
+
+<div class="portalBar">
+  <button class="portalBtn" onclick="fecharOuVoltarPortal()" title="Fechar aba (ou voltar ao portal)">✕ <span class="portalTxt">FECHAR</span></button>
+  <button class="portalBtn" id="portalTemaBtn" title="Alternar tema claro/escuro"><span id="portalTemaIcone">🌙</span> <span class="portalTxt" id="portalTemaTxt">ESCURO</span></button>
+  <button class="portalBtn" id="portalSomBtn" title="Ativar/desativar som"><span id="portalSomIcone">🔊</span> <span class="portalTxt">SOM</span></button>
+</div>
+
+<button id="hamburgerBtn" title="Configurações">☰</button>
+<div id="overlay"></div>
+<div id="drawer">
+  <div id="drawerCloseBtn">✕</div>
+  <h3>Dificuldade da IA</h3>
+  <div class="drawerBtnRow" id="dificuldadeRow"></div>
+  <div class="drawerNote">Vale para a próxima partida contra o computador.</div>
+  <h3>Partida</h3>
+  <button class="drawerAction" id="pauseBtn">⏸ Pausar</button>
+  <button class="drawerAction" id="restartBtn">↺ Reiniciar partida</button>
+  <button class="drawerAction" id="menuBtn">🏠 Voltar ao menu</button>
+</div>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="game" width="900" height="540"></canvas>
+
+    <div id="modeTag"></div>
+    <div id="hud">
+      <div><div class="label" id="labelP1">Jogador</div><div class="score p1" id="scoreP1">0</div></div>
+      <div><div class="label" id="labelP2">CPU</div><div class="score p2" id="scoreP2">0</div></div>
+    </div>
+    <div id="serveMsg"></div>
+    <div id="flashMsg"></div>
+
+    <!-- Menu -->
+    <div class="screen" id="menuScreen">
+      <div class="titleWord">ARCADE PONG</div>
+      <div class="subTitle">Röchling · easter egg</div>
+
+      <div class="opLabel">Modo</div>
+      <div class="opGroup" id="modoRow">
+        <button class="opBtn" data-modo="tenis">🎾 Tênis</button>
+        <button class="opBtn" data-modo="futebol">⚽ Futebol</button>
+        <button class="opBtn" data-modo="paredao">🧱 Paredão</button>
+      </div>
+
+      <div id="oponenteBlock">
+        <div class="opLabel">Oponente</div>
+        <div class="opGroup" id="oponenteRow">
+          <button class="opBtn" data-op="cpu">🤖 1 Jogador (CPU)</button>
+          <button class="opBtn" data-op="2p">🧑‍🤝‍🧑 2 Jogadores</button>
+        </div>
+      </div>
+
+      <div id="dificuldadeBlockMenu">
+        <div class="opLabel">Dificuldade</div>
+        <div class="opGroup" id="dificuldadeRowMenu"></div>
+      </div>
+
+      <p class="miniText" id="dicaControles">Arraste o mouse ou o dedo para mover o paddle.</p>
+      <button class="bigBtn" id="startBtn">Jogar</button>
+    </div>
+
+    <!-- Pausa -->
+    <div class="screen hidden" id="pauseScreen">
+      <div class="titleWord" style="font-size:26px">PAUSADO</div>
+      <button class="bigBtn" id="resumeBtn">▶ Continuar</button>
+      <button class="bigBtn ghost" id="pauseMenuBtn">Voltar ao menu</button>
+    </div>
+
+    <!-- Fim de jogo -->
+    <div class="screen hidden" id="overScreen">
+      <div class="titleWord" id="overTitle" style="font-size:30px">FIM DE JOGO</div>
+      <div class="statsRow">
+        <div class="statBox"><div class="num" id="overScoreP1">0</div><div class="lab" id="overLabelP1">Você</div></div>
+        <div class="statBox"><div class="num" id="overScoreP2">0</div><div class="lab" id="overLabelP2">CPU</div></div>
+      </div>
+      <button class="bigBtn" id="retryBtn">Jogar novamente</button>
+      <button class="bigBtn ghost" id="overMenuBtn">Menu</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+const canvas = $('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+/* ================= configurações e estado ================= */
+const NIVEIS = [
+  { nome:'Fácil',      velMax:230, erro:65, atraso:0.30, reflexo:false },
+  { nome:'Médio',      velMax:330, erro:38, atraso:0.16, reflexo:false },
+  { nome:'Difícil',    velMax:430, erro:20, atraso:0.08, reflexo:true  },
+  { nome:'Impossível', velMax:520, erro:9,  atraso:0.03, reflexo:true  }
+];
+const settings = { modo:'tenis', oponente:'cpu', nivel:1, som:true };
+
+const PADDLE_W = 14, PADDLE_H = 90, BALL_R = 8;
+const GOAL_H = 150; // altura do gol (futebol) — só essa faixa central marca ponto; o resto da linha de fundo é parede
+const GOAL_TOP = H/2 - GOAL_H/2, GOAL_BOTTOM = H/2 + GOAL_H/2;
+
+// "jogadores" do modo Futebol: 3 por lado, em formação vertical fixa, que sobem/descem
+// juntos (mesmo lado sempre em fase) e alternados entre os lados (um lado sobe enquanto o outro desce)
+const JOGADOR_W = 7.5, JOGADOR_H = 34.5, JOGADOR_AMP = 55, JOGADOR_PERIODO = 2.6; // segundos por ciclo completo
+let jogadorEstadoColisao = [false,false,false,false,false,false]; // evita reagir toda vez que ainda está sobrepondo
+const JOGADORES_BASE_Y = [H*0.22, H*0.5, H*0.78];
+let jogadoresFase = 0;
+function posicoesJogadores(){
+  const off = Math.sin(jogadoresFase) * JOGADOR_AMP;
+  const esquerda = JOGADORES_BASE_Y.map(y => ({ x: W*0.30, y: y + off }));
+  const direita  = JOGADORES_BASE_Y.map(y => ({ x: W*0.70, y: y - off })); // fase oposta: desce quando o outro lado sobe
+  return esquerda.concat(direita);
+}
+const WIN_SCORE = 7;
+const VEL_BASE = 320, VEL_INC = 1.045, VEL_MAX = 700;
+const VEL_TECLADO = 620, VEL_MAX_PADDLE = 900;
+
+let state = 'menu'; // menu, serving, playing, paused, over
+let p1 = { y:H/2, alvoY:H/2, score:0 };
+let p2 = { y:H/2, alvoY:H/2, score:0 };
+let ball = { x:W/2, y:H/2, vx:0, vy:0, speed:VEL_BASE };
+let recordeParedao = 0, rallyParedao = 0;
+let serveTimer = 0, serveFor = 1;
+let flashTimer = 0, flashText = '';
+let shake = 0;
+let lastTs = 0;
+let teclas = { p1cima:false, p1baixo:false, p2cima:false, p2baixo:false };
+let iaAlvoY = H/2, iaProximaAtualizacao = 0;
+
+try{ recordeParedao = parseInt(localStorage.getItem('pong-recorde-paredao')||'0',10)||0; }catch(e){}
+
+/* ================= áudio (WebAudio, sem arquivos) — só quicada, vitória e derrota ================= */
+let audioCtx = null;
+function ensureAudio(){
+  if(!audioCtx){ try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  else if(audioCtx.state==='suspended'){ audioCtx.resume(); }
+}
+function tocar(freq, dur, tipo, vol, slide){
+  if(!window.somLigado || !audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+  osc.type = tipo||'square';
+  osc.frequency.setValueAtTime(freq, t0);
+  if(slide) osc.frequency.exponentialRampToValueAtTime(slide, t0+dur);
+  gain.gain.setValueAtTime(vol||0.14, t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(t0); osc.stop(t0+dur+0.02);
+}
+function playPaddle(){ tocar(220 + Math.random()*40, 0.07, 'square', 0.16, 340); }
+function playWall(){ tocar(520, 0.045, 'triangle', 0.10); }
+function playScore(){ tocar(160, 0.18, 'sawtooth', 0.16, 90); }
+function playVitoria(){ [0,0.12,0.24,0.4].forEach((d,i)=>setTimeout(()=>tocar(440+i*140,0.18,'triangle',0.15),d*1000)); }
+function playDerrota(){ [0,0.14].forEach((d,i)=>setTimeout(()=>tocar(220-i*90,0.32,'sawtooth',0.16,60),d*1000)); }
+
+/* ================= util ================= */
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function reflexoY(y){ // dobra y no intervalo [0,H] simulando quiques nas paredes (usado pela IA em níveis espertos)
+  const p = 2*H; let m = y % p; if(m<0) m += p;
+  return m<=H ? m : p-m;
+}
+
+/* ================= servir / resetar bola ================= */
+function prepararSaque(paraQuem){
+  ball.x = W/2; ball.y = H/2;
+  ball.speed = VEL_BASE;
+  serveFor = paraQuem;
+  serveTimer = 0.9;
+  state = 'serving';
+  const msg = $('serveMsg');
+  msg.textContent = settings.modo==='paredao' ? 'PRONTO?' : (paraQuem===1 ? '◀ SAQUE' : 'SAQUE ▶');
+  msg.classList.add('show');
+}
+function lancarBola(){
+  $('serveMsg').classList.remove('show');
+  const ang = (Math.random()*0.7 - 0.35); // -20°..20° aprox
+  const dir = settings.modo==='paredao' ? 1 : (serveFor===1 ? 1 : -1);
+  ball.vx = Math.cos(ang)*ball.speed*dir;
+  ball.vy = Math.sin(ang)*ball.speed*(Math.random()<0.5?1:-1);
+  state = 'playing';
+}
+
+/* ================= iniciar partida ================= */
+function iniciarPartida(){
+  p1.score = 0; p2.score = 0; rallyParedao = 0;
+  p1.y = p1.alvoY = H/2; p2.y = p2.alvoY = H/2;
+  iaAlvoY = H/2; iaProximaAtualizacao = 0;
+  jogadoresFase = 0;
+  jogadorEstadoColisao = [false,false,false,false,false,false];
+  atualizarHudLabels();
+  atualizarPlacar();
+  prepararSaque(Math.random()<0.5?1:2);
+  state = 'serving';
+}
+
+function atualizarHudLabels(){
+  const modoNomes = { tenis:'TÊNIS', futebol:'FUTEBOL', paredao:'PAREDÃO' };
+  $('modeTag').textContent = modoNomes[settings.modo] + (settings.modo!=='paredao' ? (settings.oponente==='cpu' ? ' · VS CPU ('+NIVEIS[settings.nivel].nome.toUpperCase()+')' : ' · 2 JOGADORES') : '');
+  $('labelP1').textContent = settings.modo==='paredao' ? 'RALI' : 'JOGADOR 1';
+  $('labelP2').textContent = settings.modo==='paredao' ? 'RECORDE' : (settings.oponente==='cpu' ? 'CPU' : 'JOGADOR 2');
+  $('hud').style.display = 'flex';
+}
+function atualizarPlacar(){
+  if(settings.modo==='paredao'){
+    $('scoreP1').textContent = rallyParedao;
+    $('scoreP2').textContent = recordeParedao;
+  } else {
+    $('scoreP1').textContent = p1.score;
+    $('scoreP2').textContent = p2.score;
+  }
+}
+
+/* ================= IA ================= */
+function atualizarIA(dt){
+  const nivel = NIVEIS[settings.nivel];
+  if(ball.vx > 0){ // bola vindo em direção à CPU
+    iaProximaAtualizacao -= dt;
+    if(iaProximaAtualizacao <= 0){
+      const paddleX = W - 30;
+      const t = Math.max(0, (paddleX - ball.x) / (ball.vx||1));
+      let previsaoY = ball.y + ball.vy*t;
+      previsaoY = nivel.reflexo ? reflexoY(previsaoY) : clamp(previsaoY, 0, H);
+      iaAlvoY = clamp(previsaoY + (Math.random()*2-1)*nivel.erro, 0, H);
+      iaProximaAtualizacao = nivel.atraso;
+    }
+  } else {
+    iaAlvoY = H/2; // devolve ao centro devagar quando a bola está longe
+  }
+  const diff = iaAlvoY - p2.y;
+  const passo = clamp(diff, -nivel.velMax*dt, nivel.velMax*dt);
+  p2.y = clamp(p2.y + passo, PADDLE_H/2, H-PADDLE_H/2);
+}
+
+/* ================= física ================= */
+function atualizarFisica(dt){
+  ball.x += ball.vx*dt;
+  ball.y += ball.vy*dt;
+
+  if(ball.y - BALL_R < 0){ ball.y = BALL_R; ball.vy *= -1; playWall(); shake = Math.max(shake,3); }
+  if(ball.y + BALL_R > H){ ball.y = H-BALL_R; ball.vy *= -1; playWall(); shake = Math.max(shake,3); }
+
+  if(settings.modo==='futebol'){
+    jogadoresFase += (Math.PI*2/JOGADOR_PERIODO) * dt;
+    posicoesJogadores().forEach(function(j, i){
+      const dx = ball.x - j.x, dy = ball.y - j.y;
+      const overlapX = (JOGADOR_W/2 + BALL_R) - Math.abs(dx);
+      const overlapY = (JOGADOR_H/2 + BALL_R) - Math.abs(dy);
+      const sobrepondo = overlapX > 0 && overlapY > 0;
+      if(sobrepondo && !jogadorEstadoColisao[i]){
+        // resolve pelo eixo de MENOR sobreposição — empurra a bola pra fora e inverte só a velocidade daquele eixo
+        if(overlapX < overlapY){
+          ball.x += dx >= 0 ? overlapX : -overlapX;
+          ball.vx = Math.abs(ball.vx) * (dx >= 0 ? 1 : -1);
+        } else {
+          ball.y += dy >= 0 ? overlapY : -overlapY;
+          ball.vy = Math.abs(ball.vy) * (dy >= 0 ? 1 : -1);
+        }
+        playWall();
+        shake = Math.max(shake, 1.6);
+      }
+      jogadorEstadoColisao[i] = sobrepondo;
+    });
+  }
+
+  // paddle do jogador 1 (esquerda)
+  const p1x = 30;
+  if(ball.vx < 0 && ball.x - BALL_R <= p1x + PADDLE_W/2 && ball.x - BALL_R > p1x - 12 &&
+     ball.y > p1.y - PADDLE_H/2 - BALL_R && ball.y < p1.y + PADDLE_H/2 + BALL_R){
+    rebater(p1, 1);
+  }
+
+  if(settings.modo==='paredao'){
+    // parede sólida na direita: sempre rebate
+    const wallX = W - 26;
+    if(ball.vx > 0 && ball.x + BALL_R >= wallX){
+      ball.x = wallX - BALL_R;
+      ball.speed = Math.min(VEL_MAX, ball.speed*VEL_INC);
+      const vyNovo = ball.vy + (Math.random()*160-80); // pequena variação, mantém a partida interessante
+      const vxNovo = -Math.abs(ball.vx);
+      const mag = Math.hypot(vxNovo, vyNovo) || 1;
+      ball.vx = vxNovo/mag*ball.speed;
+      ball.vy = vyNovo/mag*ball.speed;
+      playPaddle();
+      rallyParedao++;
+      atualizarPlacar();
+      shake = Math.max(shake, 2);
+    }
+  } else {
+    // paddle do jogador 2 / CPU (direita)
+    const p2x = W - 30;
+    if(ball.vx > 0 && ball.x + BALL_R >= p2x - PADDLE_W/2 && ball.x + BALL_R < p2x + 12 &&
+       ball.y > p2.y - PADDLE_H/2 - BALL_R && ball.y < p2.y + PADDLE_H/2 + BALL_R){
+      rebater(p2, -1);
+    }
+  }
+
+  // saída pelas laterais — no Futebol, só marca ponto se cruzar dentro da faixa do gol;
+  // fora dessa faixa, a linha de fundo funciona como parede e a bola quica de volta
+  const dentroDoGol = ball.y > GOAL_TOP && ball.y < GOAL_BOTTOM;
+  if(ball.x - BALL_R < 0){
+    if(settings.modo==='futebol' && !dentroDoGol){
+      ball.x = BALL_R; ball.vx *= -1; playWall(); shake = Math.max(shake,2);
+    } else if(ball.x < -30){
+      if(settings.modo==='paredao'){ perderParedao(); }
+      else { pontuar(2); }
+    }
+  } else if(ball.x + BALL_R > W && settings.modo!=='paredao'){
+    if(settings.modo==='futebol' && !dentroDoGol){
+      ball.x = W-BALL_R; ball.vx *= -1; playWall(); shake = Math.max(shake,2);
+    } else if(ball.x > W+30){
+      pontuar(1);
+    }
+  }
+}
+function rebater(paddle, sinal){
+  const rel = (ball.y - paddle.y) / (PADDLE_H/2); // -1..1
+  ball.speed = Math.min(VEL_MAX, ball.speed*VEL_INC);
+  const ang = rel*0.62; // até ~35°
+  const spd = ball.speed;
+  ball.vx = Math.cos(ang)*spd*sinal;
+  ball.vy = Math.sin(ang)*spd;
+  playPaddle();
+  shake = Math.max(shake, 2.4);
+}
+function pontuar(quem){
+  if(quem===1) p1.score++; else p2.score++;
+  playScore();
+  atualizarPlacar();
+  if(p1.score>=WIN_SCORE || p2.score>=WIN_SCORE){ fimDeJogo(); return; }
+  prepararSaque(quem===1?2:1);
+}
+function perderParedao(){
+  playDerrota();
+  let recorde = false;
+  if(rallyParedao > recordeParedao){ recordeParedao = rallyParedao; recorde = true; try{ localStorage.setItem('pong-recorde-paredao', String(recordeParedao)); }catch(e){} }
+  atualizarPlacar();
+  mostrarFlash(recorde ? 'NOVO RECORDE!' : 'FIM DO RALI');
+  setTimeout(()=>{ fimDeJogoParedao(recorde); }, 900);
+}
+function mostrarFlash(txt){
+  const el = $('flashMsg');
+  el.textContent = txt;
+  el.classList.add('show');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(()=>el.classList.remove('show'), 850);
+}
+
+/* ================= fim de jogo ================= */
+function fimDeJogo(){
+  state = 'over';
+  const p1Venceu = p1.score > p2.score;
+  $('overTitle').textContent = settings.oponente==='2p'
+    ? (p1Venceu ? 'JOGADOR 1 VENCEU!' : 'JOGADOR 2 VENCEU!')
+    : (p1Venceu ? 'VOCÊ VENCEU!' : 'A CPU VENCEU');
+  $('overTitle').style.color = p1Venceu ? '' : '';
+  $('overScoreP1').textContent = p1.score;
+  $('overScoreP2').textContent = p2.score;
+  $('overLabelP1').textContent = settings.oponente==='2p' ? 'Jogador 1' : 'Você';
+  $('overLabelP2').textContent = settings.oponente==='2p' ? 'Jogador 2' : 'CPU';
+  if(settings.oponente==='cpu'){ if(p1Venceu) playVitoria(); else playDerrota(); }
+  mostrarTela('overScreen');
+}
+function fimDeJogoParedao(recorde){
+  state = 'over';
+  $('overTitle').textContent = recorde ? 'NOVO RECORDE!' : 'FIM DO RALI';
+  $('overScoreP1').textContent = rallyParedao;
+  $('overScoreP2').textContent = recordeParedao;
+  $('overLabelP1').textContent = 'Rali';
+  $('overLabelP2').textContent = 'Recorde';
+  mostrarTela('overScreen');
+}
+
+/* ================= desenho ================= */
+const TEMAS = {
+  tenis:   { fundo:'#050608', linha:'rgba(255,255,255,.18)', p1:'#3ce6ff', p2:'#ff2ee6', bola:'#ffffff' },
+  futebol: { fundo:'#06120c', linha:'rgba(255,255,255,.22)', p1:'#37e08a', p2:'#ffd35c', bola:'#ffffff' },
+  paredao: { fundo:'#0a0704', linha:'rgba(255,176,32,.25)',  p1:'#ffb020', p2:'#ffb020', bola:'#fff2c4' }
+};
+function desenhar(){
+  const tema = TEMAS[settings.modo];
+  ctx.save();
+  if(shake>0){ ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake); shake = Math.max(0, shake-0.35); }
+
+  ctx.fillStyle = tema.fundo;
+  ctx.fillRect(-10,-10,W+20,H+20);
+
+  if(settings.modo==='futebol'){
+    const grd = ctx.createRadialGradient(W/2,H/2,40,W/2,H/2,W*0.6);
+    grd.addColorStop(0,'rgba(55,224,138,.10)'); grd.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle = tema.linha; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(W/2,H/2,70,0,Math.PI*2); ctx.stroke();
+  }
+
+  // linha/textura central
+  ctx.strokeStyle = tema.linha;
+  if(settings.modo==='paredao'){
+    // parede da direita (tijolos)
+    const wallX = W-26;
+    ctx.fillStyle = 'rgba(255,176,32,.14)';
+    ctx.fillRect(wallX, 0, 26, H);
+    ctx.strokeStyle = 'rgba(255,176,32,.35)'; ctx.lineWidth = 1;
+    const bh = 18;
+    for(let row=0; row*bh<H; row++){
+      const offset = (row%2===0) ? 0 : 13;
+      for(let bx=-13; bx<26; bx+=26){
+        ctx.strokeRect(wallX+bx+offset, row*bh, 26, bh);
+      }
+    }
+  } else {
+    ctx.setLineDash([10,12]); ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(W/2,6); ctx.lineTo(W/2,H-6); ctx.stroke();
+    ctx.setLineDash([]);
+    if(settings.modo==='futebol'){
+      // traves do gol nas bordas — só essa faixa central marca ponto
+      ctx.fillStyle = tema.linha;
+      ctx.fillRect(6, GOAL_TOP, 4, GOAL_H);
+      ctx.fillRect(W-10, GOAL_TOP, 4, GOAL_H);
+    }
+  }
+
+  // jogadores-obstáculo do Futebol (3 de cada lado, sobem/descem em fases opostas)
+  if(settings.modo==='futebol'){
+    posicoesJogadores().forEach(function(j){
+      ctx.save();
+      ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 6;
+      ctx.fillStyle = 'rgba(255,255,255,.55)';
+      const r = 3, top = j.y-JOGADOR_H/2, left = j.x-JOGADOR_W/2;
+      ctx.beginPath();
+      ctx.moveTo(left+r, top);
+      ctx.arcTo(left+JOGADOR_W, top, left+JOGADOR_W, top+JOGADOR_H, r);
+      ctx.arcTo(left+JOGADOR_W, top+JOGADOR_H, left, top+JOGADOR_H, r);
+      ctx.arcTo(left, top+JOGADOR_H, left, top, r);
+      ctx.arcTo(left, top, left+JOGADOR_W, top, r);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  // paddles
+  desenharPaddle(30, p1.y, tema.p1);
+  if(settings.modo!=='paredao') desenharPaddle(W-30, p2.y, tema.p2);
+
+  // bola
+  ctx.beginPath();
+  ctx.fillStyle = tema.bola;
+  ctx.shadowColor = tema.bola; ctx.shadowBlur = 16;
+  ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI*2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.restore();
+}
+function desenharPaddle(x, y, cor){
+  ctx.save();
+  ctx.shadowColor = cor; ctx.shadowBlur = 14;
+  ctx.fillStyle = cor;
+  ctx.beginPath();
+  const r = 5;
+  const top = y-PADDLE_H/2, left = x-PADDLE_W/2;
+  ctx.moveTo(left+r, top);
+  ctx.arcTo(left+PADDLE_W, top, left+PADDLE_W, top+PADDLE_H, r);
+  ctx.arcTo(left+PADDLE_W, top+PADDLE_H, left, top+PADDLE_H, r);
+  ctx.arcTo(left, top+PADDLE_H, left, top, r);
+  ctx.arcTo(left, top, left+PADDLE_W, top, r);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+/* ================= loop ================= */
+function frame(ts){
+  const dt = Math.min(0.032, (ts-lastTs)/1000 || 0);
+  lastTs = ts;
+
+  if(state==='playing'){
+    if(settings.modo!=='paredao' && settings.oponente==='cpu') atualizarIA(dt);
+    atualizarFisica(dt);
+  } else if(state==='serving'){
+    serveTimer -= dt;
+    if(serveTimer<=0) lancarBola();
+  }
+
+  if(state!=='menu'){
+    aplicarMovimentoPaddle(p1, dt, teclas.p1cima, teclas.p1baixo);
+    if(settings.modo!=='paredao' && settings.oponente==='2p') aplicarMovimentoPaddle(p2, dt, teclas.p2cima, teclas.p2baixo);
+    desenhar();
+  }
+  requestAnimationFrame(frame);
+}
+function aplicarMovimentoPaddle(paddle, dt, cima, baixo){
+  if(cima) paddle.alvoY -= VEL_TECLADO*dt;
+  if(baixo) paddle.alvoY += VEL_TECLADO*dt;
+  paddle.alvoY = clamp(paddle.alvoY, PADDLE_H/2, H-PADDLE_H/2);
+  const maxStep = VEL_MAX_PADDLE*dt;
+  const diff = paddle.alvoY - paddle.y;
+  paddle.y += clamp(diff, -maxStep, maxStep);
+}
+requestAnimationFrame(frame);
+
+/* ================= input: ponteiro (mouse + toque, com multi-touch p/ 2 jogadores) ================= */
+const ponteiros = new Map(); // pointerId -> 'p1' | 'p2'
+function canvasXY(clientX, clientY){
+  const rect = canvas.getBoundingClientRect();
+  return { x:(clientX-rect.left)*(W/rect.width), y:(clientY-rect.top)*(H/rect.height) };
+}
+canvas.addEventListener('pointerdown', e=>{
+  ensureAudio();
+  const pos = canvasXY(e.clientX, e.clientY);
+  let alvo = 'p1';
+  if(settings.modo!=='paredao' && settings.oponente==='2p'){
+    alvo = pos.x < W/2 ? 'p1' : 'p2';
+  }
+  ponteiros.set(e.pointerId, alvo);
+  (alvo==='p1'?p1:p2).alvoY = clamp(pos.y, PADDLE_H/2, H-PADDLE_H/2);
+});
+canvas.addEventListener('pointermove', e=>{
+  const alvo = ponteiros.get(e.pointerId);
+  if(!alvo) return;
+  const pos = canvasXY(e.clientX, e.clientY);
+  (alvo==='p1'?p1:p2).alvoY = clamp(pos.y, PADDLE_H/2, H-PADDLE_H/2);
+});
+function soltarPonteiro(e){ ponteiros.delete(e.pointerId); }
+canvas.addEventListener('pointerup', soltarPonteiro);
+canvas.addEventListener('pointercancel', soltarPonteiro);
+canvas.addEventListener('pointerleave', soltarPonteiro);
+
+/* ================= input: teclado (W/S e setas — permite 2 jogadores no mesmo teclado) ================= */
+window.addEventListener('keydown', e=>{
+  ensureAudio();
+  const k = e.key.toLowerCase();
+  if(k==='w') teclas.p1cima = true;
+  if(k==='s') teclas.p1baixo = true;
+  if(k==='arrowup'){ teclas.p2cima = true; e.preventDefault(); }
+  if(k==='arrowdown'){ teclas.p2baixo = true; e.preventDefault(); }
+  if(k==='escape' && state==='playing') pausar();
+});
+window.addEventListener('keyup', e=>{
+  const k = e.key.toLowerCase();
+  if(k==='w') teclas.p1cima = false;
+  if(k==='s') teclas.p1baixo = false;
+  if(k==='arrowup') teclas.p2cima = false;
+  if(k==='arrowdown') teclas.p2baixo = false;
+});
+
+/* ================= telas / navegação ================= */
+function mostrarTela(id){
+  ['menuScreen','pauseScreen','overScreen'].forEach(s=>$(s).classList.toggle('hidden', s!==id));
+}
+function esconderTelas(){
+  ['menuScreen','pauseScreen','overScreen'].forEach(s=>$(s).classList.add('hidden'));
+}
+function pausar(){ state = 'paused'; mostrarTela('pauseScreen'); }
+function continuar(){ state = 'playing'; esconderTelas(); }
+function irParaMenu(){
+  state = 'menu';
+  $('hud').style.display = 'none';
+  $('serveMsg').classList.remove('show');
+  mostrarTela('menuScreen');
+}
+
+/* seleção de modo/oponente/dificuldade no menu */
+function montarBotoesDificuldade(container, onPick){
+  container.innerHTML = '';
+  NIVEIS.forEach((n,i)=>{
+    const b = document.createElement('button');
+    b.className = 'opBtn' + (i===settings.nivel ? ' active' : '');
+    b.textContent = n.nome;
+    b.addEventListener('click', ()=>{ settings.nivel = i; onPick(); });
+    container.appendChild(b);
+  });
+}
+function refrescarMenu(){
+  document.querySelectorAll('#modoRow .opBtn').forEach(b=>b.classList.toggle('active', b.dataset.modo===settings.modo));
+  document.querySelectorAll('#oponenteRow .opBtn').forEach(b=>b.classList.toggle('active', b.dataset.op===settings.oponente));
+  $('oponenteBlock').classList.toggle('hidden', settings.modo==='paredao');
+  $('dificuldadeBlockMenu').classList.toggle('hidden', settings.modo==='paredao' || settings.oponente!=='cpu');
+  montarBotoesDificuldade($('dificuldadeRowMenu'), refrescarMenu);
+  $('dicaControles').textContent = settings.modo==='paredao'
+    ? 'Arraste o mouse ou o dedo para rebater na parede. Quantas vezes seguidas você consegue?'
+    : (settings.oponente==='2p'
+        ? 'Jogador 1: mouse/dedo na metade esquerda ou W/S · Jogador 2: metade direita ou ▲/▼'
+        : 'Arraste o mouse ou o dedo para mover o paddle.');
+}
+document.querySelectorAll('#modoRow .opBtn').forEach(b=>b.addEventListener('click', ()=>{ settings.modo=b.dataset.modo; refrescarMenu(); }));
+document.querySelectorAll('#oponenteRow .opBtn').forEach(b=>b.addEventListener('click', ()=>{ settings.oponente=b.dataset.op; refrescarMenu(); }));
+refrescarMenu();
+
+$('startBtn').addEventListener('click', ()=>{ ensureAudio(); iniciarPartida(); esconderTelas(); });
+$('retryBtn').addEventListener('click', ()=>{ iniciarPartida(); esconderTelas(); });
+$('overMenuBtn').addEventListener('click', irParaMenu);
+$('resumeBtn').addEventListener('click', continuar);
+$('pauseMenuBtn').addEventListener('click', irParaMenu);
+
+/* ================= hambúrguer / gaveta ================= */
+function montarDificuldadeGaveta(){
+  montarBotoesDificuldade($('dificuldadeRow'), ()=>{ montarDificuldadeGaveta(); atualizarHudLabels(); });
+}
+function abrirGaveta(){
+  montarDificuldadeGaveta();
+  $('drawer').classList.add('show'); $('overlay').classList.add('show');
+}
+function fecharGaveta(){ $('drawer').classList.remove('show'); $('overlay').classList.remove('show'); }
+$('hamburgerBtn').addEventListener('click', abrirGaveta);
+$('drawerCloseBtn').addEventListener('click', fecharGaveta);
+$('overlay').addEventListener('click', fecharGaveta);
+$('pauseBtn').addEventListener('click', ()=>{ fecharGaveta(); if(state==='playing') pausar(); else if(state==='paused') continuar(); });
+$('restartBtn').addEventListener('click', ()=>{ fecharGaveta(); iniciarPartida(); esconderTelas(); });
+$('menuBtn').addEventListener('click', ()=>{ fecharGaveta(); irParaMenu(); });
+
+/* ================= integração com o Portal: tema + som + fechar ================= */
+function fecharOuVoltarPortal(){
+  window.close();
+  setTimeout(function(){ window.location.href = 'index.html'; }, 300);
+}
+(function initTemaSom(){
+  const root = document.documentElement;
+  const temaBtn = $('portalTemaBtn'), temaIcone = $('portalTemaIcone'), temaTxt = $('portalTemaTxt');
+  const somBtn = $('portalSomBtn'), somIcone = $('portalSomIcone');
+
+  function aplicarTema(t){
+    root.setAttribute('data-theme', t);
+    temaIcone.textContent = (t==='dark') ? '🌙' : '☀️';
+    temaTxt.textContent = (t==='dark') ? 'ESCURO' : 'CLARO';
+  }
+  aplicarTema(root.getAttribute('data-theme') || 'dark');
+  temaBtn.addEventListener('click', ()=>{
+    const novo = (root.getAttribute('data-theme')==='dark') ? 'light' : 'dark';
+    aplicarTema(novo);
+    try{ localStorage.setItem('portal-tema', novo); }catch(e){}
+  });
+
+  function lerSom(){ try{ const v = localStorage.getItem('jogos-som'); return v===null?true:v==='1'; }catch(e){ return true; } }
+  function aplicarSom(on){
+    window.somLigado = on;
+    somIcone.textContent = on ? '🔊' : '🔇';
+    try{ localStorage.setItem('jogos-som', on?'1':'0'); }catch(e){}
+  }
+  aplicarSom(lerSom());
+  somBtn.addEventListener('click', ()=>aplicarSom(!window.somLigado));
+})();
+
+})();
+</script>
+</body>
+</html>
