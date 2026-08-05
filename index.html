@@ -159,6 +159,7 @@
   .hero{
     flex:0 0 auto;
     text-align:center;
+    margin-left:clamp(0px, 10vw, 170px);
     padding:clamp(14px,3.5vh,36px) 24px clamp(10px,2.5vh,24px);
   }
   .dot-arc{
@@ -202,7 +203,7 @@
     justify-items:center;
     gap:clamp(12px,2vh,20px);
     padding:0 clamp(16px,4vw,48px) clamp(10px,2vh,20px) clamp(16px,4vw,48px);
-    width:48vw; max-width:760px; margin-left:50%;
+    width:calc(48% - 24px); max-width:920px; margin-left:52%;
     overflow-y:auto;
   }
   .card{
@@ -304,6 +305,7 @@
     .dot-arc span{ opacity:1; transform:none; }
   }
   @media (max-width:640px){
+    .hero{ margin-left:0; }
     .grid{ grid-template-columns:1fr; width:100%; max-width:100%; margin-left:0; padding:0 20px clamp(10px,2vh,20px); }
     .card{ max-width:100%; }
   }
@@ -344,7 +346,7 @@
 <main class="grid" id="grid" aria-label="Sistemas disponíveis"></main>
 
 <footer>
-  <b>Röchling</b> · Portal interno de sistemas · <span id="versaoPortal" style="opacity:.65">v1.2</span><br>
+  <b>Röchling</b> · Portal interno de sistemas · <span id="versaoPortal" style="opacity:.65">v1.3</span><br>
   <span id="copyEgg">&copy; 2026 - A M Cecchini</span>
 </footer>
 
@@ -547,7 +549,7 @@ const ICONES = {
   camera.position.set(0, 0, 4.0);
 
   const pivot = new THREE.Group();                // inclinação (pitch)
-  pivot.position.x = -1.9;                        // globo deslocado para a esquerda (menos atrás dos cards)
+  pivot.position.x = -1.5;                        // globo deslocado para a esquerda (respiro da borda, sem colar nela)
   const globe = new THREE.Group();                // rotação leste-oeste (yaw)
   pivot.add(globe);
   scene.add(pivot);
