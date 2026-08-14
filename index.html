@@ -120,14 +120,15 @@
     pointer-events:auto;
   }
   body.modo-voo .card .desc, body.modo-voo .card .mini-arc{ display:none; }
-  body.modo-voo .card-icon{ width:24px; height:24px; border-radius:7px; }
+  body.modo-voo .card .card-icon{ width:24px; height:24px; border-radius:7px; }
   body.modo-voo .card h2{ font-size:12.5px; }
   body.modo-voo .tag{ font-size:9px; padding:1px 5px; }
   body.modo-voo .card .open{ font-size:10.5px; }
   body.modo-voo .card:nth-of-type(1){ left:14px; top:76px; }
   body.modo-voo .card:nth-of-type(2){ left:14px; top:168px; }
-  body.modo-voo .card:nth-of-type(3){ left:calc(100vw - 186px); top:76px; }
-  body.modo-voo .card:nth-of-type(4){ left:calc(100vw - 186px); top:168px; }
+  body.modo-voo .card:nth-of-type(3){ left:14px; top:260px; }
+  body.modo-voo .card:nth-of-type(4){ left:calc(100vw - 186px); top:122px; }
+  body.modo-voo .card:nth-of-type(5){ left:calc(100vw - 186px); top:214px; }
 
   /* ===== Header (compacto) ===== */
   header{
@@ -201,22 +202,25 @@
     grid-template-columns:repeat(2, 1fr);
     align-content:center;
     justify-items:center;
-    gap:clamp(12px,2vh,20px);
+    gap:clamp(8px,1.5vh,16px);
     padding:0 clamp(16px,4vw,48px) clamp(10px,2vh,20px) clamp(16px,4vw,48px);
     width:calc(48% - 24px); max-width:920px; margin-left:52%;
     overflow-y:auto;
   }
+  .card-destaque{ grid-column: 1 / -1; }
+  .card.card-destaque .card-icon{ width:clamp(44px,6.2vh,52px); height:clamp(44px,6.2vh,52px); }
+  .card.card-destaque h2{ font-size:clamp(18px,2.5vh,22px); }
   .card{
     position:relative;
     width:100%; max-width:360px;
-    display:flex; flex-direction:column; gap:clamp(7px,1.2vh,12px);
+    display:flex; flex-direction:column; gap:clamp(5px,1vh,10px);
     background:var(--surface);
     background:color-mix(in srgb, var(--surface) 86%, transparent);
     backdrop-filter:blur(7px);
     -webkit-backdrop-filter:blur(7px);
     border:1px solid var(--line);
     border-radius:16px;
-    padding:clamp(14px,2.4vh,22px) clamp(16px,1.6vw,22px);
+    padding:clamp(10px,1.8vh,18px) clamp(14px,1.4vw,20px);
     text-decoration:none;
     box-shadow:var(--shadow);
     transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease,
@@ -246,7 +250,7 @@
   .card:hover .mini-arc i:nth-child(3){ transition-delay:.14s; }
 
   .card-icon{
-    width:clamp(38px,5.5vh,46px); height:clamp(38px,5.5vh,46px);
+    width:clamp(34px,5vh,42px); height:clamp(34px,5vh,42px);
     border-radius:12px;
     background:var(--blue-soft); color:var(--blue);
     display:flex; align-items:center; justify-content:center;
@@ -257,7 +261,7 @@
   .card-head{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
   .card h2{
     font-family:'Sora', sans-serif;
-    font-size:clamp(16px,2.2vh,19px); font-weight:600; letter-spacing:-.01em;
+    font-size:clamp(14.5px,2vh,17px); font-weight:600; letter-spacing:-.01em;
   }
   .tag{
     font-family:'JetBrains Mono', monospace;
@@ -346,7 +350,7 @@
 <main class="grid" id="grid" aria-label="Sistemas disponíveis"></main>
 
 <footer>
-  <b>Röchling</b> · Portal interno de sistemas · <span id="versaoPortal" style="opacity:.65">v1.3</span><br>
+  <b>Röchling</b> · Portal interno de sistemas · <span id="versaoPortal" style="opacity:.65">v1.4</span><br>
   <span id="copyEgg">&copy; 2026 - A M Cecchini</span>
 </footer>
 
@@ -393,20 +397,21 @@ function attachLongPress(el, onLongPress){
 
 const SISTEMAS = [
   {
+    nome : "Action Plan",
+    tag  : "Qualidade",
+    desc : "Gestão de planos de ação — abertura, acompanhamento e encerramento de ações corretivas por responsável e prazo.",
+    url  : "https://acecchini-jpg.github.io/ActionPlan/",
+    icone: "plano",
+    jogo : "hero-easter-egg.html",
+    destaque: true
+  },
+  {
     nome : "ScrapIQ",
     tag  : "Qualidade",
     desc : "Gestão de refugo industrial — índice e custo de scrap, Pareto de defeitos e produtos, análise por equipamento e turno, com sincronização em nuvem.",
     url  : "https://acecchini-jpg.github.io/ScrapIQ/",
     icone: "refugo",
     jogo : "berzerk-easter-egg.html"
-  },
-  {
-    nome : "Dash SF",
-    tag  : "Produção",
-    desc : "Dashboard de programação diária — aderência ao plano (total, acabado e WIP), downtime e Pareto de motivos de parada por produto, máquina e molde.",
-    url  : "https://acecchini-jpg.github.io/DashSF/",
-    icone: "programacao",
-    jogo : "turbo-easter-egg.html"
   },
   {
     nome : "Dash PDM",
@@ -417,12 +422,20 @@ const SISTEMAS = [
     jogo : "snake-easter-egg.html"
   },
   {
-    nome : "Action Plan",
+    nome : "Dash SF",
+    tag  : "Produção",
+    desc : "Dashboard de programação diária — aderência ao plano (total, acabado e WIP), downtime e Pareto de motivos de parada por produto, máquina e molde.",
+    url  : "https://acecchini-jpg.github.io/DashSF/",
+    icone: "programacao",
+    jogo : "turbo-easter-egg.html"
+  },
+  {
+    nome : "Dash GP12",
     tag  : "Qualidade",
-    desc : "Gestão de planos de ação — abertura, acompanhamento e encerramento de ações corretivas por responsável e prazo.",
-    url  : "https://acecchini-jpg.github.io/ActionPlan/",
-    icone: "plano",
-    jogo : "hero-easter-egg.html"
+    desc : "Auditoria GP-12 — checklist de inspeções por camada (LPA), acompanhamento de conformidade por linha e turno, e apontamento de não conformidades.",
+    url  : "https://acecchini-jpg.github.io/DashGP12/",
+    icone: "engrenagem",
+    jogo : "gorillas-easter-egg.html"
   }
 ];
 
@@ -439,7 +452,7 @@ const ICONES = {
 (function renderCards(){
   const grid = document.getElementById('grid');
   grid.innerHTML = SISTEMAS.map(s => (
-    '<a class="card" href="' + s.url + '" target="sistema_' + s.nome.replace(/\s+/g,'') + '" rel="noopener noreferrer" data-jogo="' + s.jogo + '">' +
+    '<a class="card' + (s.destaque ? ' card-destaque' : '') + '" href="' + s.url + '" target="sistema_' + s.nome.replace(/\s+/g,'') + '" rel="noopener noreferrer" data-jogo="' + s.jogo + '">' +
       '<span class="mini-arc" aria-hidden="true"><i></i><i></i><i></i></span>' +
       '<span class="card-icon">' + (ICONES[s.icone] || ICONES.grafico) + '</span>' +
       '<span class="card-head"><h2>' + s.nome + '</h2><span class="tag">' + s.tag + '</span></span>' +
